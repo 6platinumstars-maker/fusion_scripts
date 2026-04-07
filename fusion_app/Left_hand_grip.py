@@ -106,6 +106,77 @@ def create_split_triangle_on_face(root_comp, face, helpers):
     return split_sketch
 
 
+def create_upper_stop_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.yZConstructionPlane)
+    sketch.name = '上部止部'
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+
+    # Outer start reference (0.00, 30.00, -3.00) mm -> (0.00, 3.00, -0.30) cm.
+    base_y = 3.0
+    base_z = -0.3
+    outer_radius_cm = 0.9
+    inner_radius_cm = 0.615
+    # Keep the top wall vertical so the upper tip does not form a triangular spur.
+    top_width_cm = outer_radius_cm - inner_radius_cm
+    top_height_cm = 0.996
+    inner_start_z = 0.0
+
+    top_left = to_sketch_space(sketch, 0.0, base_y + outer_radius_cm - top_width_cm, base_z + top_height_cm)
+    top_right = to_sketch_space(sketch, 0.0, base_y + outer_radius_cm, base_z + top_height_cm)
+    outer_right = to_sketch_space(sketch, 0.0, base_y + outer_radius_cm, base_z + outer_radius_cm)
+    outer_bottom = to_sketch_space(sketch, 0.0, base_y, base_z)
+    inner_bottom = to_sketch_space(sketch, 0.0, base_y, inner_start_z)
+    inner_right = to_sketch_space(sketch, 0.0, base_y + inner_radius_cm, inner_start_z + inner_radius_cm)
+
+    outer_mid = to_sketch_space(
+        sketch,
+        0.0,
+        base_y + (outer_radius_cm / math.sqrt(2.0)),
+        base_z + outer_radius_cm - (outer_radius_cm / math.sqrt(2.0))
+    )
+    inner_mid = to_sketch_space(
+        sketch,
+        0.0,
+        base_y + (inner_radius_cm / math.sqrt(2.0)),
+        inner_start_z + inner_radius_cm - (inner_radius_cm / math.sqrt(2.0))
+    )
+
+    lines.addByTwoPoints(top_left, top_right)
+    lines.addByTwoPoints(top_right, outer_right)
+    arcs.addByThreePoints(outer_right, outer_mid, outer_bottom)
+    lines.addByTwoPoints(outer_bottom, inner_bottom)
+    arcs.addByThreePoints(inner_bottom, inner_mid, inner_right)
+    lines.addByTwoPoints(inner_right, top_left)
+
+    return sketch
+
+
+def find_highest_xy_face(body, tolerance=1e-6):
+    highest_face = None
+    highest_z = None
+
+    for face in body.faces:
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > tolerance or abs(normal.y) > tolerance:
+            continue
+
+        face_max_z = face.boundingBox.maxPoint.z
+        if highest_z is None or face_max_z > highest_z:
+            highest_z = face_max_z
+            highest_face = face
+
+    if not highest_face:
+        raise RuntimeError('上部止部の最上位 XY 面を取得できませんでした。')
+
+    return highest_face
+
+
 def load_fusion_helpers():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     core_dir = os.path.join(script_dir, 'core')
@@ -151,6 +222,27 @@ def run(context):
             split_profile,
             1.0,
             adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation
+        )
+
+        upper_stop_sketch = create_upper_stop_sketch(root_comp)
+        upper_stop_profile = helpers.get_largest_profile(upper_stop_sketch)
+        upper_stop_feature = extrude_profile(
+            root_comp,
+            upper_stop_profile,
+            2.5,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+        )
+        upper_stop_body = helpers.get_body_from_feature(upper_stop_feature)
+        add_named_attribute(upper_stop_body, '上部止部')
+
+        highest_xy_face = find_highest_xy_face(upper_stop_body)
+        extrude_profile(
+            root_comp,
+            highest_xy_face,
+            0.3,
+            adsk.fusion.ExtentDirections.PositiveExtentDirection,
             adsk.fusion.FeatureOperations.JoinFeatureOperation
         )
 
