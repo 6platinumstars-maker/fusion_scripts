@@ -172,6 +172,39 @@ def create_lower_stop_sketch(root_comp):
     return sketch
 
 
+def create_outer_shell_cut_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.yZConstructionPlane)
+    sketch.name = '内殻外部_仕様案1'
+
+    lines = sketch.sketchCurves.sketchLines
+
+    top_left = to_sketch_space(sketch, 0.0, -3.0, 0.7)
+    top_right = to_sketch_space(sketch, 0.0, -2.3, 0.7)
+    bottom_right = to_sketch_space(sketch, 0.0, -2.3, -0.3)
+    bottom_left = to_sketch_space(sketch, 0.0, -3.0, -0.3)
+
+    lines.addByTwoPoints(top_left, top_right)
+    lines.addByTwoPoints(top_right, bottom_right)
+    lines.addByTwoPoints(bottom_right, bottom_left)
+    lines.addByTwoPoints(bottom_left, top_left)
+
+    return sketch
+
+
+def create_joystick_receiver_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = 'ジョイステック受け'
+
+    center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
+    sketch_center_point = sketch.sketchPoints.add(center_point)
+    add_named_attribute(sketch_center_point, 'ジョイスティック受け基準点')
+
+    circles = sketch.sketchCurves.sketchCircles
+    circles.addByCenterRadius(center_point, 1.5)
+
+    return sketch
+
+
 def find_highest_xy_face(body, tolerance=1e-6):
     highest_face = None
     highest_z = None
@@ -291,35 +324,6 @@ def find_lower_stop_top_face(body, tolerance=1e-6):
     return max(matching_faces, key=lambda face: face.boundingBox.maxPoint.x - face.boundingBox.minPoint.x)
 
 
-def find_lower_stop_fillet_face(body, reference_vertex, tolerance=1e-6):
-    matching_faces = []
-
-    for face in body.faces:
-        cylinder = adsk.core.Cylinder.cast(face.geometry)
-        if not cylinder:
-            continue
-
-        if abs(cylinder.radius - 0.5) > tolerance:
-            continue
-
-        for vertex in face.vertices:
-            if vertex.entityToken == reference_vertex.entityToken:
-                matching_faces.append(face)
-                break
-
-    if not matching_faces:
-        raise RuntimeError('下部止部曲面を取得できませんでした。')
-
-    return max(matching_faces, key=lambda face: face.area)
-
-
-def find_edge_vertex_on_split_face(edge, tolerance=1e-6):
-    for vertex in (edge.startVertex, edge.endVertex):
-        if abs(vertex.geometry.x) <= tolerance:
-            return vertex
-    raise RuntimeError('下部止部曲面基準点を取得できませんでした。')
-
-
 def load_fusion_helpers():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     core_dir = os.path.join(script_dir, 'core')
@@ -405,23 +409,31 @@ def run(context):
         bottom_slope_face = find_face_by_named_attribute(body, '底面斜面')
         lower_stop_face = helpers.find_face_by_axis_value(body, 'y', -2.0)
         lower_stop_fillet_edge = find_shared_linear_edge(bottom_slope_face, lower_stop_face)
-        lower_stop_reference_point = find_edge_vertex_on_split_face(lower_stop_fillet_edge).geometry
         apply_constant_radius_fillet(root_comp, lower_stop_fillet_edge, 0.5)
 
         body = root_comp.bRepBodies.item(0)
         lower_stop_top_face = find_lower_stop_top_face(body)
         add_named_attribute(lower_stop_top_face, '下部止部平面')
 
-        lower_stop_reference_vertex = helpers.find_vertex_by_coordinates(
-            body.vertices,
-            x=lower_stop_reference_point.x,
-            y=lower_stop_reference_point.y,
-            z=lower_stop_reference_point.z
+        joystick_receiver_sketch = create_joystick_receiver_sketch(root_comp)
+        joystick_receiver_profile = helpers.get_largest_profile(joystick_receiver_sketch)
+        extrude_profile(
+            root_comp,
+            joystick_receiver_profile,
+            1.0,
+            adsk.fusion.ExtentDirections.PositiveExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
         )
-        add_named_attribute(lower_stop_reference_vertex, '下部止部曲面基準点')
 
-        lower_stop_fillet_face = find_lower_stop_fillet_face(body, lower_stop_reference_vertex)
-        add_named_attribute(lower_stop_fillet_face, '下部止部曲面')
+        outer_shell_cut_sketch = create_outer_shell_cut_sketch(root_comp)
+        outer_shell_cut_profile = helpers.get_largest_profile(outer_shell_cut_sketch)
+        extrude_profile(
+            root_comp,
+            outer_shell_cut_profile,
+            1.0,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
+        )
 
     except:
         if ui:

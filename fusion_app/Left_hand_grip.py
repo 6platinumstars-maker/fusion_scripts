@@ -6,7 +6,7 @@ import os
 import sys
 
 def create_base_sketch(root_comp):
-    rect_left = 7.0
+    rect_left = 7.5
     rect_front = 3.0
     rect_back = 3.0
     top_start_from_y_axis = 2.5
@@ -46,6 +46,26 @@ def create_base_sketch(root_comp):
 def extrude_profile(root_comp, profile, distance_cm, direction, operation):
     extrudes = root_comp.features.extrudeFeatures
     extrude_input = extrudes.createInput(profile, operation)
+
+    distance_value = adsk.core.ValueInput.createByReal(distance_cm)
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction
+    )
+
+    return extrudes.add(extrude_input)
+
+
+def extrude_profiles(root_comp, profiles, distance_cm, direction, operation):
+    profile_collection = adsk.core.ObjectCollection.create()
+    for profile in profiles:
+        profile_collection.add(profile)
+
+    if profile_collection.count == 0:
+        raise RuntimeError('押し出し対象のプロファイルを取得できませんでした。')
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(profile_collection, operation)
 
     distance_value = adsk.core.ValueInput.createByReal(distance_cm)
     extrude_input.setOneSideExtent(
@@ -172,6 +192,99 @@ def create_lower_stop_sketch(root_comp):
     return sketch
 
 
+def create_outer_shell_cut_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.yZConstructionPlane)
+    sketch.name = '内殻外部_仕様案1'
+
+    lines = sketch.sketchCurves.sketchLines
+
+    top_left = to_sketch_space(sketch, 0.0, -3.0, 0.7)
+    top_right = to_sketch_space(sketch, 0.0, -2.3, 0.7)
+    bottom_right = to_sketch_space(sketch, 0.0, -2.3, -0.3)
+    bottom_left = to_sketch_space(sketch, 0.0, -3.0, -0.3)
+
+    lines.addByTwoPoints(top_left, top_right)
+    lines.addByTwoPoints(top_right, bottom_right)
+    lines.addByTwoPoints(bottom_right, bottom_left)
+    lines.addByTwoPoints(bottom_left, top_left)
+
+    return sketch
+
+
+def create_joystick_receiver_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = 'ジョイステック受け'
+
+    center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
+    sketch_center_point = sketch.sketchPoints.add(center_point)
+    add_named_attribute(sketch_center_point, 'ジョイスティック受け基準点')
+
+    circles = sketch.sketchCurves.sketchCircles
+    circles.addByCenterRadius(center_point, 1.5)
+
+    return sketch
+
+
+def create_outer_shell_option2_preview_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = '内殻外部_仕様案2_確認用'
+
+    circles = sketch.sketchCurves.sketchCircles
+
+    first_center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
+    second_center_point = adsk.core.Point3D.create(-4.2, 0.5, 0.0)
+
+    circles.addByCenterRadius(first_center_point, 1.8)
+    circles.addByCenterRadius(second_center_point, 3.3)
+
+    return sketch
+
+
+def create_outer_shell_option2_cut_sketch(root_comp, face, helpers):
+    sketch = helpers.create_sketch_on_face(root_comp, face, '内殻外部_仕様案2')
+    helpers.project_face_edges(sketch, face)
+
+    circles = sketch.sketchCurves.sketchCircles
+
+    first_center_point = to_sketch_space(sketch, -2.1, -1.0, 0.0)
+    second_center_point = to_sketch_space(sketch, -4.2, 0.5, 0.0)
+
+    circles.addByCenterRadius(first_center_point, 1.8)
+    circles.addByCenterRadius(second_center_point, 3.3)
+
+    return sketch
+
+
+def get_profiles_nearest_points(sketch, target_points):
+    selected_profiles = []
+    selected_tokens = set()
+
+    for target_x, target_y in target_points:
+        nearest_profile = None
+        nearest_distance = None
+
+        for index in range(sketch.profiles.count):
+            profile = sketch.profiles.item(index)
+            centroid = profile.areaProperties().centroid
+            distance = math.hypot(centroid.x - target_x, centroid.y - target_y)
+
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_distance = distance
+                nearest_profile = profile
+
+        if not nearest_profile:
+            raise RuntimeError('内殻外部の仕様案2用プロファイルを取得できませんでした。')
+
+        profile_token = nearest_profile.entityToken
+        if profile_token in selected_tokens:
+            raise RuntimeError('内殻外部の仕様案2用プロファイルが2領域に分かれていませんでした。')
+
+        selected_tokens.add(profile_token)
+        selected_profiles.append(nearest_profile)
+
+    return selected_profiles
+
+
 def find_highest_xy_face(body, tolerance=1e-6):
     highest_face = None
     highest_z = None
@@ -291,35 +404,6 @@ def find_lower_stop_top_face(body, tolerance=1e-6):
     return max(matching_faces, key=lambda face: face.boundingBox.maxPoint.x - face.boundingBox.minPoint.x)
 
 
-def find_lower_stop_fillet_face(body, reference_vertex, tolerance=1e-6):
-    matching_faces = []
-
-    for face in body.faces:
-        cylinder = adsk.core.Cylinder.cast(face.geometry)
-        if not cylinder:
-            continue
-
-        if abs(cylinder.radius - 0.5) > tolerance:
-            continue
-
-        for vertex in face.vertices:
-            if vertex.entityToken == reference_vertex.entityToken:
-                matching_faces.append(face)
-                break
-
-    if not matching_faces:
-        raise RuntimeError('下部止部曲面を取得できませんでした。')
-
-    return max(matching_faces, key=lambda face: face.area)
-
-
-def find_edge_vertex_on_split_face(edge, tolerance=1e-6):
-    for vertex in (edge.startVertex, edge.endVertex):
-        if abs(vertex.geometry.x) <= tolerance:
-            return vertex
-    raise RuntimeError('下部止部曲面基準点を取得できませんでした。')
-
-
 def load_fusion_helpers():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     core_dir = os.path.join(script_dir, 'core')
@@ -370,6 +454,20 @@ def run(context):
         bottom_slope_face = find_bottom_slope_face(body)
         add_named_attribute(bottom_slope_face, '底面斜面')
 
+        top_face = helpers.find_face_by_axis_value(body, 'z', 0.0)
+        outer_shell_option2_sketch = create_outer_shell_option2_cut_sketch(root_comp, top_face, helpers)
+        outer_shell_option2_profiles = get_profiles_nearest_points(
+            outer_shell_option2_sketch,
+            [(-7.5, 2.6), (-7.5, -3.0)]
+        )
+        extrude_profiles(
+            root_comp,
+            outer_shell_option2_profiles,
+            1.0,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
+        )
+
         upper_stop_sketch = create_upper_stop_sketch(root_comp)
         upper_stop_profile = helpers.get_largest_profile(upper_stop_sketch)
         upper_stop_feature = extrude_profile(
@@ -405,23 +503,31 @@ def run(context):
         bottom_slope_face = find_face_by_named_attribute(body, '底面斜面')
         lower_stop_face = helpers.find_face_by_axis_value(body, 'y', -2.0)
         lower_stop_fillet_edge = find_shared_linear_edge(bottom_slope_face, lower_stop_face)
-        lower_stop_reference_point = find_edge_vertex_on_split_face(lower_stop_fillet_edge).geometry
         apply_constant_radius_fillet(root_comp, lower_stop_fillet_edge, 0.5)
 
         body = root_comp.bRepBodies.item(0)
         lower_stop_top_face = find_lower_stop_top_face(body)
         add_named_attribute(lower_stop_top_face, '下部止部平面')
 
-        lower_stop_reference_vertex = helpers.find_vertex_by_coordinates(
-            body.vertices,
-            x=lower_stop_reference_point.x,
-            y=lower_stop_reference_point.y,
-            z=lower_stop_reference_point.z
+        joystick_receiver_sketch = create_joystick_receiver_sketch(root_comp)
+        joystick_receiver_profile = helpers.get_largest_profile(joystick_receiver_sketch)
+        extrude_profile(
+            root_comp,
+            joystick_receiver_profile,
+            1.0,
+            adsk.fusion.ExtentDirections.PositiveExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
         )
-        add_named_attribute(lower_stop_reference_vertex, '下部止部曲面基準点')
 
-        lower_stop_fillet_face = find_lower_stop_fillet_face(body, lower_stop_reference_vertex)
-        add_named_attribute(lower_stop_fillet_face, '下部止部曲面')
+        outer_shell_cut_sketch = create_outer_shell_cut_sketch(root_comp)
+        outer_shell_cut_profile = helpers.get_largest_profile(outer_shell_cut_sketch)
+        extrude_profile(
+            root_comp,
+            outer_shell_cut_profile,
+            1.0,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
+        )
 
     except:
         if ui:
