@@ -415,6 +415,32 @@ def apply_constant_radius_fillet(root_comp, edge, radius_cm):
     return fillets.add(fillet_input)
 
 
+def find_circular_edge_by_center_radius_z(body, center_x, center_y, radius_cm, z_value, tolerance=1e-6):
+    for edge in body.edges:
+        geometry = edge.geometry
+        circle = adsk.core.Circle3D.cast(geometry)
+        arc = adsk.core.Arc3D.cast(geometry)
+
+        if circle:
+            center = circle.center
+            radius = circle.radius
+        elif arc:
+            center = arc.center
+            radius = arc.radius
+        else:
+            continue
+
+        if (
+            abs(center.x - center_x) <= tolerance
+            and abs(center.y - center_y) <= tolerance
+            and abs(center.z - z_value) <= tolerance
+            and abs(radius - radius_cm) <= tolerance
+        ):
+            return edge
+
+    raise RuntimeError('指定条件に一致する円弧エッジを取得できませんでした。')
+
+
 def join_all_bodies_into_first(root_comp):
     bodies = root_comp.bRepBodies
     if bodies.count <= 1:
@@ -590,6 +616,16 @@ def run(context):
         )
 
         join_all_bodies_into_first(root_comp)
+
+        body = root_comp.bRepBodies.item(0)
+        inner_shell_outer_inner_arc = find_circular_edge_by_center_radius_z(
+            body,
+            -4.2,
+            0.5,
+            3.1,
+            0.0
+        )
+        apply_constant_radius_fillet(root_comp, inner_shell_outer_inner_arc, 0.6)
 
         body = root_comp.bRepBodies.item(0)
         bottom_slope_face = find_face_by_named_attribute(body, '底面斜面')

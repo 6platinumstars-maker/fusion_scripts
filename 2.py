@@ -415,6 +415,50 @@ def apply_constant_radius_fillet(root_comp, edge, radius_cm):
     return fillets.add(fillet_input)
 
 
+def find_circular_edge_by_center_radius_z(body, center_x, center_y, radius_cm, z_value, tolerance=1e-6):
+    for edge in body.edges:
+        geometry = edge.geometry
+        circle = adsk.core.Circle3D.cast(geometry)
+        arc = adsk.core.Arc3D.cast(geometry)
+
+        if circle:
+            center = circle.center
+            radius = circle.radius
+        elif arc:
+            center = arc.center
+            radius = arc.radius
+        else:
+            continue
+
+        if (
+            abs(center.x - center_x) <= tolerance
+            and abs(center.y - center_y) <= tolerance
+            and abs(center.z - z_value) <= tolerance
+            and abs(radius - radius_cm) <= tolerance
+        ):
+            return edge
+
+    raise RuntimeError('指定条件に一致する円弧エッジを取得できませんでした。')
+
+
+def join_all_bodies_into_first(root_comp):
+    bodies = root_comp.bRepBodies
+    if bodies.count <= 1:
+        return None
+
+    target_body = bodies.item(0)
+    tool_body_collection = adsk.core.ObjectCollection.create()
+    for index in range(1, bodies.count):
+        tool_body_collection.add(bodies.item(index))
+
+    combine_features = root_comp.features.combineFeatures
+    combine_input = combine_features.createInput(target_body, tool_body_collection)
+    combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+    combine_input.isKeepToolBodies = False
+
+    return combine_features.add(combine_input)
+
+
 def is_xy_plane_face(face, tolerance=1e-6):
     geometry = adsk.core.Plane.cast(face.geometry)
     if not geometry:
@@ -570,6 +614,18 @@ def run(context):
             adsk.fusion.ExtentDirections.NegativeExtentDirection,
             adsk.fusion.FeatureOperations.JoinFeatureOperation
         )
+
+        join_all_bodies_into_first(root_comp)
+
+        body = root_comp.bRepBodies.item(0)
+        inner_shell_outer_inner_arc = find_circular_edge_by_center_radius_z(
+            body,
+            -4.2,
+            0.5,
+            3.1,
+            0.0
+        )
+        apply_constant_radius_fillet(root_comp, inner_shell_outer_inner_arc, 0.6)
 
         body = root_comp.bRepBodies.item(0)
         bottom_slope_face = find_face_by_named_attribute(body, '底面斜面')
