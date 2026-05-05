@@ -6,7 +6,7 @@ import os
 import sys
 
 def create_base_sketch(root_comp):
-    rect_left = 7.0
+    rect_left = 7.5
     rect_front = 3.0
     rect_back = 3.0
     top_start_from_y_axis = 2.5
@@ -46,6 +46,26 @@ def create_base_sketch(root_comp):
 def extrude_profile(root_comp, profile, distance_cm, direction, operation):
     extrudes = root_comp.features.extrudeFeatures
     extrude_input = extrudes.createInput(profile, operation)
+
+    distance_value = adsk.core.ValueInput.createByReal(distance_cm)
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction
+    )
+
+    return extrudes.add(extrude_input)
+
+
+def extrude_profiles(root_comp, profiles, distance_cm, direction, operation):
+    profile_collection = adsk.core.ObjectCollection.create()
+    for profile in profiles:
+        profile_collection.add(profile)
+
+    if profile_collection.count == 0:
+        raise RuntimeError('押し出し対象のプロファイルを取得できませんでした。')
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(profile_collection, operation)
 
     distance_value = adsk.core.ValueInput.createByReal(distance_cm)
     extrude_input.setOneSideExtent(
@@ -205,6 +225,85 @@ def create_joystick_receiver_sketch(root_comp):
     return sketch
 
 
+def create_inner_shell_outer_perimeter_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = '内殻外周'
+
+    circles = sketch.sketchCurves.sketchCircles
+    lines = sketch.sketchCurves.sketchLines
+
+    first_center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
+    second_center_point = adsk.core.Point3D.create(-4.2, 0.5, 0.0)
+    lower_intersection_point = adsk.core.Point3D.create(-2.8579259696487043, -2.294429690841519, 0.0)
+    target_point = adsk.core.Point3D.create(-2.9842, -2.5679, 0.0)
+
+    circles.addByCenterRadius(first_center_point, 1.5)
+    circles.addByCenterRadius(second_center_point, 3.1)
+    lines.addByTwoPoints(lower_intersection_point, target_point)
+
+    return sketch
+
+
+def create_outer_shell_option2_preview_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = '内殻外部_仕様案2_確認用'
+
+    circles = sketch.sketchCurves.sketchCircles
+
+    first_center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
+    second_center_point = adsk.core.Point3D.create(-4.2, 0.5, 0.0)
+
+    circles.addByCenterRadius(first_center_point, 1.8)
+    circles.addByCenterRadius(second_center_point, 3.3)
+
+    return sketch
+
+
+def create_outer_shell_option2_cut_sketch(root_comp, face, helpers):
+    sketch = helpers.create_sketch_on_face(root_comp, face, '内殻外部_仕様案2')
+    helpers.project_face_edges(sketch, face)
+
+    circles = sketch.sketchCurves.sketchCircles
+
+    first_center_point = to_sketch_space(sketch, -2.1, -1.0, 0.0)
+    second_center_point = to_sketch_space(sketch, -4.2, 0.5, 0.0)
+
+    circles.addByCenterRadius(first_center_point, 1.8)
+    circles.addByCenterRadius(second_center_point, 3.3)
+
+    return sketch
+
+
+def get_profiles_nearest_points(sketch, target_points):
+    selected_profiles = []
+    selected_tokens = set()
+
+    for target_x, target_y in target_points:
+        nearest_profile = None
+        nearest_distance = None
+
+        for index in range(sketch.profiles.count):
+            profile = sketch.profiles.item(index)
+            centroid = profile.areaProperties().centroid
+            distance = math.hypot(centroid.x - target_x, centroid.y - target_y)
+
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_distance = distance
+                nearest_profile = profile
+
+        if not nearest_profile:
+            raise RuntimeError('内殻外部の仕様案2用プロファイルを取得できませんでした。')
+
+        profile_token = nearest_profile.entityToken
+        if profile_token in selected_tokens:
+            raise RuntimeError('内殻外部の仕様案2用プロファイルが2領域に分かれていませんでした。')
+
+        selected_tokens.add(profile_token)
+        selected_profiles.append(nearest_profile)
+
+    return selected_profiles
+
+
 def find_highest_xy_face(body, tolerance=1e-6):
     highest_face = None
     highest_z = None
@@ -350,6 +449,7 @@ def run(context):
         root_comp = design.rootComponent
 
         base_sketch = create_base_sketch(root_comp)
+        create_inner_shell_outer_perimeter_sketch(root_comp)
         base_profile = helpers.get_largest_profile(base_sketch)
         base_feature = extrude_profile(
             root_comp,
@@ -373,6 +473,20 @@ def run(context):
         )
         bottom_slope_face = find_bottom_slope_face(body)
         add_named_attribute(bottom_slope_face, '底面斜面')
+
+        top_face = helpers.find_face_by_axis_value(body, 'z', 0.0)
+        outer_shell_option2_sketch = create_outer_shell_option2_cut_sketch(root_comp, top_face, helpers)
+        outer_shell_option2_profiles = get_profiles_nearest_points(
+            outer_shell_option2_sketch,
+            [(-7.5, 2.6), (-7.5, -3.0)]
+        )
+        extrude_profiles(
+            root_comp,
+            outer_shell_option2_profiles,
+            1.0,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
+        )
 
         upper_stop_sketch = create_upper_stop_sketch(root_comp)
         upper_stop_profile = helpers.get_largest_profile(upper_stop_sketch)
