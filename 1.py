@@ -253,14 +253,16 @@ def create_inner_shell_outer_perimeter_sketch(root_comp):
     circles = sketch.sketchCurves.sketchCircles
     lines = sketch.sketchCurves.sketchLines
 
-    first_center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
     second_center_point = adsk.core.Point3D.create(-4.2, 0.5, 0.0)
-    lower_intersection_point = adsk.core.Point3D.create(-2.8579259696487043, -2.294429690841519, 0.0)
+    upper_circle_point = adsk.core.Point3D.create(-2.8579, -2.2944, 0.0)
     target_point = adsk.core.Point3D.create(-2.9842, -2.5679, 0.0)
+    line_start_point = adsk.core.Point3D.create(-6.667, 2.6918, 0.0)
+    line_end_point = adsk.core.Point3D.create(-2.5, 3.0, 0.0)
 
-    circles.addByCenterRadius(first_center_point, 1.5)
     circles.addByCenterRadius(second_center_point, 3.1)
-    lines.addByTwoPoints(lower_intersection_point, target_point)
+    circles.addByCenterRadius(second_center_point, 3.3)
+    lines.addByTwoPoints(upper_circle_point, target_point)
+    lines.addByTwoPoints(line_start_point, line_end_point)
 
     return sketch
 
@@ -413,6 +415,24 @@ def apply_constant_radius_fillet(root_comp, edge, radius_cm):
     return fillets.add(fillet_input)
 
 
+def join_all_bodies_into_first(root_comp):
+    bodies = root_comp.bRepBodies
+    if bodies.count <= 1:
+        return None
+
+    target_body = bodies.item(0)
+    tool_body_collection = adsk.core.ObjectCollection.create()
+    for index in range(1, bodies.count):
+        tool_body_collection.add(bodies.item(index))
+
+    combine_features = root_comp.features.combineFeatures
+    combine_input = combine_features.createInput(target_body, tool_body_collection)
+    combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+    combine_input.isKeepToolBodies = False
+
+    return combine_features.add(combine_input)
+
+
 def is_xy_plane_face(face, tolerance=1e-6):
     geometry = adsk.core.Plane.cast(face.geometry)
     if not geometry:
@@ -471,7 +491,7 @@ def run(context):
 
         base_sketch = create_base_sketch(root_comp)
         joystick_receiver_outer_sketch = create_joystick_receiver_outer_perimeter_sketch(root_comp)
-        create_inner_shell_outer_perimeter_sketch(root_comp)
+        inner_shell_outer_sketch = create_inner_shell_outer_perimeter_sketch(root_comp)
         base_profile = helpers.get_largest_profile(base_sketch)
         base_feature = extrude_profile(
             root_comp,
@@ -509,6 +529,20 @@ def run(context):
         )
         joystick_receiver_outer_body = helpers.get_body_from_feature(joystick_receiver_outer_feature)
         add_named_attribute(joystick_receiver_outer_body, 'ジョイスティック受外周')
+
+        inner_shell_outer_profile = get_profiles_nearest_points(
+            inner_shell_outer_sketch,
+            [(-7.35, 0.5)]
+        )[0]
+        inner_shell_outer_feature = extrude_profile(
+            root_comp,
+            inner_shell_outer_profile,
+            2.58,
+            adsk.fusion.ExtentDirections.PositiveExtentDirection,
+            adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+        )
+        inner_shell_outer_body = helpers.get_body_from_feature(inner_shell_outer_feature)
+        add_named_attribute(inner_shell_outer_body, '内殻外周')
 
         top_face = helpers.find_face_by_axis_value(body, 'z', 0.0)
         outer_shell_option2_sketch = create_outer_shell_option2_cut_sketch(root_comp, top_face, helpers)
@@ -554,6 +588,8 @@ def run(context):
             adsk.fusion.ExtentDirections.NegativeExtentDirection,
             adsk.fusion.FeatureOperations.JoinFeatureOperation
         )
+
+        join_all_bodies_into_first(root_comp)
 
         body = root_comp.bRepBodies.item(0)
         bottom_slope_face = find_face_by_named_attribute(body, '底面斜面')

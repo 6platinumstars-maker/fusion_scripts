@@ -415,6 +415,24 @@ def apply_constant_radius_fillet(root_comp, edge, radius_cm):
     return fillets.add(fillet_input)
 
 
+def join_all_bodies_into_first(root_comp):
+    bodies = root_comp.bRepBodies
+    if bodies.count <= 1:
+        return None
+
+    target_body = bodies.item(0)
+    tool_body_collection = adsk.core.ObjectCollection.create()
+    for index in range(1, bodies.count):
+        tool_body_collection.add(bodies.item(index))
+
+    combine_features = root_comp.features.combineFeatures
+    combine_input = combine_features.createInput(target_body, tool_body_collection)
+    combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+    combine_input.isKeepToolBodies = False
+
+    return combine_features.add(combine_input)
+
+
 def is_xy_plane_face(face, tolerance=1e-6):
     geometry = adsk.core.Plane.cast(face.geometry)
     if not geometry:
@@ -570,6 +588,8 @@ def run(context):
             adsk.fusion.ExtentDirections.NegativeExtentDirection,
             adsk.fusion.FeatureOperations.JoinFeatureOperation
         )
+
+        join_all_bodies_into_first(root_comp)
 
         body = root_comp.bRepBodies.item(0)
         bottom_slope_face = find_face_by_named_attribute(body, '底面斜面')
