@@ -253,14 +253,16 @@ def create_inner_shell_outer_perimeter_sketch(root_comp):
     circles = sketch.sketchCurves.sketchCircles
     lines = sketch.sketchCurves.sketchLines
 
-    first_center_point = adsk.core.Point3D.create(-2.1, -1.0, 0.0)
     second_center_point = adsk.core.Point3D.create(-4.2, 0.5, 0.0)
-    lower_intersection_point = adsk.core.Point3D.create(-2.8579259696487043, -2.294429690841519, 0.0)
+    upper_circle_point = adsk.core.Point3D.create(-2.8579, -2.2944, 0.0)
     target_point = adsk.core.Point3D.create(-2.9842, -2.5679, 0.0)
+    line_start_point = adsk.core.Point3D.create(-6.667, 2.6918, 0.0)
+    line_end_point = adsk.core.Point3D.create(-2.5, 3.0, 0.0)
 
-    circles.addByCenterRadius(first_center_point, 1.5)
     circles.addByCenterRadius(second_center_point, 3.1)
-    lines.addByTwoPoints(lower_intersection_point, target_point)
+    circles.addByCenterRadius(second_center_point, 3.3)
+    lines.addByTwoPoints(upper_circle_point, target_point)
+    lines.addByTwoPoints(line_start_point, line_end_point)
 
     return sketch
 
@@ -471,7 +473,7 @@ def run(context):
 
         base_sketch = create_base_sketch(root_comp)
         joystick_receiver_outer_sketch = create_joystick_receiver_outer_perimeter_sketch(root_comp)
-        create_inner_shell_outer_perimeter_sketch(root_comp)
+        inner_shell_outer_sketch = create_inner_shell_outer_perimeter_sketch(root_comp)
         base_profile = helpers.get_largest_profile(base_sketch)
         base_feature = extrude_profile(
             root_comp,
@@ -509,6 +511,20 @@ def run(context):
         )
         joystick_receiver_outer_body = helpers.get_body_from_feature(joystick_receiver_outer_feature)
         add_named_attribute(joystick_receiver_outer_body, 'ジョイスティック受外周')
+
+        inner_shell_outer_profile = get_profiles_nearest_points(
+            inner_shell_outer_sketch,
+            [(-7.35, 0.5)]
+        )[0]
+        inner_shell_outer_feature = extrude_profile(
+            root_comp,
+            inner_shell_outer_profile,
+            2.58,
+            adsk.fusion.ExtentDirections.PositiveExtentDirection,
+            adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+        )
+        inner_shell_outer_body = helpers.get_body_from_feature(inner_shell_outer_feature)
+        add_named_attribute(inner_shell_outer_body, '内殻外周')
 
         top_face = helpers.find_face_by_axis_value(body, 'z', 0.0)
         outer_shell_option2_sketch = create_outer_shell_option2_cut_sketch(root_comp, top_face, helpers)
