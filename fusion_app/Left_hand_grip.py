@@ -685,6 +685,21 @@ def create_outer_shell_cut_sketch(root_comp):
     return sketch
 
 
+def create_outer_bottom_semicircle_sketch(root_comp, face, helpers):
+    sketch = helpers.create_sketch_on_face(root_comp, face, '止金半円部')
+    helpers.project_face_edges(sketch, face)
+
+    center_point = to_sketch_space(
+        sketch,
+        mm_to_cm(0.0),
+        mm_to_cm(5.0),
+        mm_to_cm(-3.0),
+    )
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(center_point, mm_to_cm(14.96))
+
+    return sketch
+
+
 def create_joystick_receiver_sketch(root_comp):
     sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
     sketch.name = 'ジョイステック受け'
@@ -856,6 +871,51 @@ def find_bottom_slope_face(body, tolerance=1e-6):
     return max(matching_faces, key=lambda face: face.area)
 
 
+def find_xy_face_through_point(body, target_point, tolerance=1e-6):
+    nearest_face = None
+    nearest_score = None
+
+    for face in body.faces:
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > tolerance or abs(normal.y) > tolerance or abs(abs(normal.z) - 1.0) > tolerance:
+            continue
+
+        box = face.boundingBox
+        if (
+            abs(box.minPoint.z - target_point.z) <= tolerance
+            and abs(box.maxPoint.z - target_point.z) <= tolerance
+            and box.minPoint.x - tolerance <= target_point.x <= box.maxPoint.x + tolerance
+            and box.minPoint.y - tolerance <= target_point.y <= box.maxPoint.y + tolerance
+        ):
+            return face
+
+        x_distance = 0.0
+        if target_point.x < box.minPoint.x:
+            x_distance = box.minPoint.x - target_point.x
+        elif target_point.x > box.maxPoint.x:
+            x_distance = target_point.x - box.maxPoint.x
+
+        y_distance = 0.0
+        if target_point.y < box.minPoint.y:
+            y_distance = box.minPoint.y - target_point.y
+        elif target_point.y > box.maxPoint.y:
+            y_distance = target_point.y - box.maxPoint.y
+
+        score = x_distance + y_distance + abs(box.maxPoint.z - target_point.z)
+        if nearest_score is None or score < nearest_score:
+            nearest_score = score
+            nearest_face = face
+
+    if nearest_face:
+        return nearest_face
+
+    raise RuntimeError('止金半円部用の XY 面を取得できませんでした。')
+
+
 def find_inner_shell_lid_slope_face(body, tolerance=1e-6):
     matching_faces = []
     target_slope = math.tan(math.radians(4.75))
@@ -965,6 +1025,46 @@ def find_circular_edge_by_center_radius_z(body, center_x, center_y, radius_cm, z
             return edge
 
     raise RuntimeError('指定条件に一致する円弧エッジを取得できませんでした。')
+
+
+def find_arc_edges_by_xy_radius(body, center_x, center_y, radius_cm, tolerance=1e-6):
+    matching_edges = []
+
+    for edge in body.edges:
+        geometry = edge.geometry
+        circle = adsk.core.Circle3D.cast(geometry)
+        arc = adsk.core.Arc3D.cast(geometry)
+
+        if circle:
+            center = circle.center
+            radius = circle.radius
+        elif arc:
+            center = arc.center
+            radius = arc.radius
+        else:
+            continue
+
+        if (
+            abs(center.x - center_x) <= tolerance
+            and abs(center.y - center_y) <= tolerance
+            and abs(radius - radius_cm) <= tolerance
+        ):
+            matching_edges.append(edge)
+
+    if not matching_edges:
+        raise RuntimeError('止金半円部の円弧エッジを取得できませんでした。')
+
+    return matching_edges
+
+
+def exclude_edges_on_face(edges, face):
+    excluded_tokens = {face.edges.item(index).entityToken for index in range(face.edges.count)}
+    filtered_edges = [edge for edge in edges if edge.entityToken not in excluded_tokens]
+
+    if not filtered_edges:
+        raise RuntimeError('底面外部に接していない止金半円部の円弧エッジを取得できませんでした。')
+
+    return filtered_edges
 
 
 def join_all_bodies_into_first(root_comp):
@@ -1205,6 +1305,49 @@ def run(context):
         body = root_comp.bRepBodies.item(0)
         lower_stop_top_face = find_lower_stop_top_face(body)
         add_named_attribute(lower_stop_top_face, '下部止部平面')
+
+        body = root_comp.bRepBodies.item(0)
+        outer_bottom_semicircle_center = create_model_point_from_mm(0.0, 5.0, -3.0)
+        outer_bottom_face = find_xy_face_through_point(body, outer_bottom_semicircle_center)
+        add_named_attribute(outer_bottom_face, '底面外部')
+        outer_bottom_semicircle_sketch = create_outer_bottom_semicircle_sketch(
+            root_comp,
+            outer_bottom_face,
+            helpers
+        )
+        outer_bottom_semicircle_profile = get_profile_nearest_sketch_point(
+            outer_bottom_semicircle_sketch,
+            to_sketch_space(
+                outer_bottom_semicircle_sketch,
+                -mm_to_cm(7.48),
+                mm_to_cm(5.0),
+                mm_to_cm(-3.0),
+            )
+        )
+        outer_bottom_semicircle_feature = extrude_profile(
+            root_comp,
+            outer_bottom_semicircle_profile,
+            mm_to_cm(3.87),
+            adsk.fusion.ExtentDirections.PositiveExtentDirection,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation
+        )
+        add_named_attribute(outer_bottom_semicircle_feature, '止金半円部')
+
+        body = root_comp.bRepBodies.item(0)
+        outer_bottom_face = find_face_by_named_attribute(body, '底面外部')
+        apply_constant_radius_fillet_to_edges(
+            root_comp,
+            exclude_edges_on_face(
+                find_arc_edges_by_xy_radius(
+                    body,
+                    mm_to_cm(0.0),
+                    mm_to_cm(5.0),
+                    mm_to_cm(14.96)
+                ),
+                outer_bottom_face
+            ),
+            mm_to_cm(1.0)
+        )
 
         joystick_receiver_sketch = create_joystick_receiver_sketch(root_comp)
         joystick_receiver_profile = helpers.get_largest_profile(joystick_receiver_sketch)
