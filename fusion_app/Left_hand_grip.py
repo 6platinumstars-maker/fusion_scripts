@@ -5,6 +5,30 @@ import math
 import os
 import sys
 
+INNER_SHELL_LID_POINT_REFS_MM = {
+    'A': (-66.67, -26.918, 25.782),
+    'B': (-29.842, -25.976, 21.411),
+    'C': (-28.579, -22.944, 21.638),
+    'D': (-63.701, -27.138, 25.8),
+    'F': (-62.178, -22.954, 25.452),
+    'G': (-32.059, -20.122, 21.873),
+}
+
+
+def mm_to_cm(value_mm):
+    return value_mm / 10.0
+
+
+def create_model_point_from_mm(x_mm, y_mm, z_mm):
+    return adsk.core.Point3D.create(mm_to_cm(x_mm), mm_to_cm(y_mm), mm_to_cm(z_mm))
+
+
+INNER_SHELL_LID_POINT_REFS = {
+    name: create_model_point_from_mm(*coords_mm)
+    for name, coords_mm in INNER_SHELL_LID_POINT_REFS_MM.items()
+}
+
+
 def create_base_sketch(root_comp):
     rect_left = 7.5
     rect_front = 3.0
@@ -124,6 +148,456 @@ def create_split_triangle_on_face(root_comp, face, helpers):
     lines.addByTwoPoints(axis_bottom_point, start_point)
 
     return split_sketch
+
+
+def create_inner_shell_lid_slope_cut_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.yZConstructionPlane)
+    sketch.name = '内殻蓋部斜面作成'
+
+    lines = sketch.sketchCurves.sketchLines
+
+    top_point = to_sketch_space(sketch, 0.0, 2.7138, 2.58)
+    bottom_point = to_sketch_space(sketch, 0.0, -4.0, 2.58)
+
+    delta_y = 2.7138 - (-4.0)
+    delta_z = math.tan(math.radians(4.75)) * delta_y
+    slope_end_point = to_sketch_space(sketch, 0.0, -4.0, 2.58 - delta_z)
+
+    lines.addByTwoPoints(top_point, bottom_point)
+    lines.addByTwoPoints(bottom_point, slope_end_point)
+    lines.addByTwoPoints(slope_end_point, top_point)
+
+    return sketch
+
+
+def get_face_edges(face):
+    return [face.edges.item(index) for index in range(face.edges.count)]
+
+
+def get_edge_endpoints(edge):
+    return [edge.startVertex.geometry, edge.endVertex.geometry]
+
+
+def get_point_distance(point_a, point_b):
+    return math.sqrt(
+        ((point_a.x - point_b.x) ** 2)
+        + ((point_a.y - point_b.y) ** 2)
+        + ((point_a.z - point_b.z) ** 2)
+    )
+
+
+def get_nearest_distance_to_edge(edge, target_point, sample_count=80):
+    evaluator = edge.evaluator
+    success, start_param, end_param = evaluator.getParameterExtents()
+    if not success:
+        raise RuntimeError('辺のパラメータ範囲を取得できませんでした。')
+
+    parameters = [
+        start_param + ((end_param - start_param) * index / sample_count)
+        for index in range(sample_count + 1)
+    ]
+    success, sampled_points = evaluator.getPointsAtParameters(parameters)
+    if not success:
+        raise RuntimeError('辺上のサンプル点を取得できませんでした。')
+
+    return min(get_point_distance(point, target_point) for point in sampled_points)
+
+
+def find_non_linear_edge_near_points(face, reference_points, excluded_tokens=None):
+    excluded_tokens = excluded_tokens or set()
+    candidate_edge = None
+    candidate_score = None
+
+    for edge in get_face_edges(face):
+        if edge.entityToken in excluded_tokens:
+            continue
+        if adsk.core.Line3D.cast(edge.geometry):
+            continue
+
+        score = sum(get_nearest_distance_to_edge(edge, point) for point in reference_points)
+        if candidate_score is None or score < candidate_score:
+            candidate_score = score
+            candidate_edge = edge
+
+    if not candidate_edge:
+        raise RuntimeError('内殻蓋部用の円弧エッジを取得できませんでした。')
+
+    return candidate_edge
+
+
+def find_linear_edge_near_points(face, reference_points, excluded_tokens=None):
+    excluded_tokens = excluded_tokens or set()
+    candidate_edge = None
+    candidate_score = None
+
+    for edge in get_face_edges(face):
+        if edge.entityToken in excluded_tokens:
+            continue
+        if not adsk.core.Line3D.cast(edge.geometry):
+            continue
+
+        score = sum(get_nearest_distance_to_edge(edge, point) for point in reference_points)
+        if candidate_score is None or score < candidate_score:
+            candidate_score = score
+            candidate_edge = edge
+
+    if not candidate_edge:
+        raise RuntimeError('内殻蓋部用の直線エッジを取得できませんでした。')
+
+    return candidate_edge
+
+
+def find_connected_linear_edge(face, anchor_point, target_point, excluded_tokens=None, tolerance=1e-4):
+    excluded_tokens = excluded_tokens or set()
+    candidate_edge = None
+    candidate_score = None
+
+    for edge in get_face_edges(face):
+        if edge.entityToken in excluded_tokens:
+            continue
+        if not adsk.core.Line3D.cast(edge.geometry):
+            continue
+
+        edge_points = get_edge_endpoints(edge)
+        first_distance = get_point_distance(edge_points[0], anchor_point)
+        second_distance = get_point_distance(edge_points[1], anchor_point)
+
+        if first_distance <= tolerance:
+            other_point = edge_points[1]
+        elif second_distance <= tolerance:
+            other_point = edge_points[0]
+        else:
+            continue
+
+        score = get_point_distance(other_point, target_point)
+        if candidate_score is None or score < candidate_score:
+            candidate_score = score
+            candidate_edge = edge
+
+    if not candidate_edge:
+        raise RuntimeError('内殻蓋部用の接続直線エッジを取得できませんでした。')
+
+    return candidate_edge
+
+
+def assign_named_points_to_edge_endpoints(edge, point_names):
+    edge_points = get_edge_endpoints(edge)
+    first_pair_score = (
+        get_point_distance(edge_points[0], INNER_SHELL_LID_POINT_REFS[point_names[0]])
+        + get_point_distance(edge_points[1], INNER_SHELL_LID_POINT_REFS[point_names[1]])
+    )
+    swapped_pair_score = (
+        get_point_distance(edge_points[0], INNER_SHELL_LID_POINT_REFS[point_names[1]])
+        + get_point_distance(edge_points[1], INNER_SHELL_LID_POINT_REFS[point_names[0]])
+    )
+
+    if first_pair_score <= swapped_pair_score:
+        return {
+            point_names[0]: edge_points[0],
+            point_names[1]: edge_points[1],
+        }
+
+    return {
+        point_names[0]: edge_points[1],
+        point_names[1]: edge_points[0],
+    }
+
+
+def get_other_endpoint_for_named_point(edge, anchor_point, anchor_name, other_name):
+    edge_points = get_edge_endpoints(edge)
+    first_distance = get_point_distance(edge_points[0], anchor_point)
+    second_distance = get_point_distance(edge_points[1], anchor_point)
+
+    if first_distance <= second_distance:
+        return {
+            anchor_name: edge_points[0],
+            other_name: edge_points[1],
+        }
+
+    return {
+        anchor_name: edge_points[1],
+        other_name: edge_points[0],
+    }
+
+
+def project_face_edges_by_token(sketch, face):
+    projected_by_token = {}
+
+    for edge in get_face_edges(face):
+        projected_items = sketch.project(edge)
+        projected_by_token[edge.entityToken] = [
+            projected_items.item(index)
+            for index in range(projected_items.count)
+        ]
+
+    return projected_by_token
+
+
+def get_first_sketch_curve(entities, error_message):
+    for entity in entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(entity)
+        if sketch_curve:
+            return sketch_curve
+    raise RuntimeError(error_message)
+
+
+def get_profile_nearest_sketch_point(sketch, target_point):
+    nearest_profile = None
+    nearest_distance = None
+
+    for index in range(sketch.profiles.count):
+        profile = sketch.profiles.item(index)
+        centroid = profile.areaProperties().centroid
+        distance = math.hypot(centroid.x - target_point.x, centroid.y - target_point.y)
+
+        if nearest_distance is None or distance < nearest_distance:
+            nearest_distance = distance
+            nearest_profile = profile
+
+    if not nearest_profile:
+        raise RuntimeError('内殻蓋部のプロファイルを取得できませんでした。')
+
+    return nearest_profile
+
+
+def get_profiles_nearest_sketch_points(sketch, target_points):
+    selected_profiles = []
+    selected_tokens = set()
+
+    for target_point in target_points:
+        ranked_profiles = []
+
+        for index in range(sketch.profiles.count):
+            profile = sketch.profiles.item(index)
+            centroid = profile.areaProperties().centroid
+            distance = math.hypot(centroid.x - target_point.x, centroid.y - target_point.y)
+            ranked_profiles.append((distance, profile))
+
+        ranked_profiles.sort(key=lambda item: item[0])
+
+        nearest_profile = None
+        for _, profile in ranked_profiles:
+            if profile.entityToken not in selected_tokens:
+                nearest_profile = profile
+                break
+
+        if not nearest_profile:
+            raise RuntimeError('内殻蓋部のプロファイルを取得できませんでした。')
+
+        profile_token = nearest_profile.entityToken
+        selected_tokens.add(profile_token)
+        selected_profiles.append(nearest_profile)
+
+    return selected_profiles
+
+
+def get_sketch_curve_midpoint(sketch_curve):
+    box = sketch_curve.boundingBox
+    if box:
+        return adsk.core.Point3D.create(
+            (box.minPoint.x + box.maxPoint.x) / 2.0,
+            (box.minPoint.y + box.maxPoint.y) / 2.0,
+            0.0,
+        )
+
+    return adsk.core.Point3D.create(
+        (sketch_curve.startSketchPoint.geometry.x + sketch_curve.endSketchPoint.geometry.x) / 2.0,
+        (sketch_curve.startSketchPoint.geometry.y + sketch_curve.endSketchPoint.geometry.y) / 2.0,
+        0.0,
+    )
+
+
+def assign_named_sketch_points_to_curve_endpoints(sketch_curve, point_names, reference_points):
+    curve_points = [
+        sketch_curve.startSketchPoint.geometry,
+        sketch_curve.endSketchPoint.geometry,
+    ]
+    first_pair_score = (
+        math.hypot(curve_points[0].x - reference_points[point_names[0]].x, curve_points[0].y - reference_points[point_names[0]].y)
+        + math.hypot(curve_points[1].x - reference_points[point_names[1]].x, curve_points[1].y - reference_points[point_names[1]].y)
+    )
+    swapped_pair_score = (
+        math.hypot(curve_points[0].x - reference_points[point_names[1]].x, curve_points[0].y - reference_points[point_names[1]].y)
+        + math.hypot(curve_points[1].x - reference_points[point_names[0]].x, curve_points[1].y - reference_points[point_names[0]].y)
+    )
+
+    if first_pair_score <= swapped_pair_score:
+        return {
+            point_names[0]: curve_points[0],
+            point_names[1]: curve_points[1],
+        }
+
+    return {
+        point_names[0]: curve_points[1],
+        point_names[1]: curve_points[0],
+    }
+
+
+def get_other_sketch_endpoint_for_named_point(sketch_curve, anchor_point, anchor_name, other_name):
+    curve_points = [
+        sketch_curve.startSketchPoint.geometry,
+        sketch_curve.endSketchPoint.geometry,
+    ]
+    first_distance = math.hypot(curve_points[0].x - anchor_point.x, curve_points[0].y - anchor_point.y)
+    second_distance = math.hypot(curve_points[1].x - anchor_point.x, curve_points[1].y - anchor_point.y)
+
+    if first_distance <= second_distance:
+        return {
+            anchor_name: curve_points[0],
+            other_name: curve_points[1],
+        }
+
+    return {
+        anchor_name: curve_points[1],
+        other_name: curve_points[0],
+    }
+
+
+def create_inner_shell_lid_face_sketch(root_comp, slope_face):
+    sketch = root_comp.sketches.addWithoutEdges(slope_face)
+    sketch.name = '内殻蓋部'
+
+    ab_edge = find_non_linear_edge_near_points(
+        slope_face,
+        [INNER_SHELL_LID_POINT_REFS['A'], INNER_SHELL_LID_POINT_REFS['B']]
+    )
+    cd_edge = find_non_linear_edge_near_points(
+        slope_face,
+        [INNER_SHELL_LID_POINT_REFS['C'], INNER_SHELL_LID_POINT_REFS['D']],
+        excluded_tokens={ab_edge.entityToken}
+    )
+
+    named_points = {}
+    named_points.update(assign_named_points_to_edge_endpoints(ab_edge, ('A', 'B')))
+    ad_edge = find_connected_linear_edge(
+        slope_face,
+        named_points['A'],
+        INNER_SHELL_LID_POINT_REFS['D']
+    )
+    bc_edge = find_connected_linear_edge(
+        slope_face,
+        named_points['B'],
+        INNER_SHELL_LID_POINT_REFS['C'],
+        excluded_tokens={ad_edge.entityToken}
+    )
+    named_points.update(get_other_endpoint_for_named_point(ad_edge, named_points['A'], 'A', 'D'))
+    named_points.update(get_other_endpoint_for_named_point(bc_edge, named_points['B'], 'B', 'C'))
+
+    projected_by_token = project_face_edges_by_token(sketch, slope_face)
+    ab_curve = get_first_sketch_curve(
+        projected_by_token.get(ab_edge.entityToken, []),
+        'AB円弧の投影に失敗しました。'
+    )
+    ad_curve = get_first_sketch_curve(
+        projected_by_token.get(ad_edge.entityToken, []),
+        'AD線の投影に失敗しました。'
+    )
+    bc_curve = get_first_sketch_curve(
+        projected_by_token.get(bc_edge.entityToken, []),
+        'BC線の投影に失敗しました。'
+    )
+    cd_curve = get_first_sketch_curve(
+        projected_by_token.get(cd_edge.entityToken, []),
+        'CD円弧の投影に失敗しました。'
+    )
+
+    sketch_reference_points = {
+        name: sketch.modelToSketchSpace(point)
+        for name, point in INNER_SHELL_LID_POINT_REFS.items()
+    }
+
+    named_sketch_points = {}
+    named_sketch_points.update(assign_named_sketch_points_to_curve_endpoints(ab_curve, ('A', 'B'), sketch_reference_points))
+    named_sketch_points.update(get_other_sketch_endpoint_for_named_point(ad_curve, named_sketch_points['A'], 'A', 'D'))
+    named_sketch_points.update(get_other_sketch_endpoint_for_named_point(bc_curve, named_sketch_points['B'], 'B', 'C'))
+    named_sketch_points.update(assign_named_sketch_points_to_curve_endpoints(cd_curve, ('D', 'C'), named_sketch_points))
+
+    outer_curve_collection = adsk.core.ObjectCollection.create()
+    outer_curve_collection.add(ab_curve)
+    inner_direction_point = adsk.core.Point3D.create(
+        (named_sketch_points['C'].x + named_sketch_points['D'].x) / 2.0,
+        (named_sketch_points['C'].y + named_sketch_points['D'].y) / 2.0,
+        0.0,
+    )
+    offset_curves = sketch.offset(outer_curve_collection, inner_direction_point, 0.6)
+    e_curve = get_first_sketch_curve(
+        [offset_curves.item(index) for index in range(offset_curves.count)],
+        'E円弧の作成に失敗しました。'
+    )
+
+    e_endpoints = [e_curve.startSketchPoint.geometry, e_curve.endSketchPoint.geometry]
+    direct_score = (
+        math.hypot(e_endpoints[0].x - named_sketch_points['D'].x, e_endpoints[0].y - named_sketch_points['D'].y)
+        + math.hypot(e_endpoints[1].x - named_sketch_points['C'].x, e_endpoints[1].y - named_sketch_points['C'].y)
+    )
+    swapped_score = (
+        math.hypot(e_endpoints[0].x - named_sketch_points['C'].x, e_endpoints[0].y - named_sketch_points['C'].y)
+        + math.hypot(e_endpoints[1].x - named_sketch_points['D'].x, e_endpoints[1].y - named_sketch_points['D'].y)
+    )
+
+    if direct_score <= swapped_score:
+        f_point = e_curve.startSketchPoint.geometry
+        g_point = e_curve.endSketchPoint.geometry
+    else:
+        f_point = e_curve.endSketchPoint.geometry
+        g_point = e_curve.startSketchPoint.geometry
+
+    named_sketch_points['F'] = f_point
+    named_sketch_points['G'] = g_point
+
+    lines = sketch.sketchCurves.sketchLines
+    df_curve = lines.addByTwoPoints(named_sketch_points['D'], named_sketch_points['F'])
+    cg_curve = lines.addByTwoPoints(named_sketch_points['C'], named_sketch_points['G'])
+
+    sketch.sketchCurves.sketchArcs.addFillet(
+        e_curve,
+        e_curve.startSketchPoint.geometry,
+        df_curve,
+        df_curve.endSketchPoint.geometry,
+        0.2
+    )
+    sketch.sketchCurves.sketchArcs.addFillet(
+        e_curve,
+        e_curve.endSketchPoint.geometry,
+        cg_curve,
+        cg_curve.endSketchPoint.geometry,
+        0.2
+    )
+
+    ab_midpoint = get_sketch_curve_midpoint(ab_curve)
+    e_midpoint = get_sketch_curve_midpoint(e_curve)
+    cd_midpoint = get_sketch_curve_midpoint(cd_curve)
+
+    lid_profile_target_point = adsk.core.Point3D.create(
+        (ab_midpoint.x + e_midpoint.x) / 2.0,
+        (ab_midpoint.y + e_midpoint.y) / 2.0,
+        0.0,
+    )
+    cut_face_profile_target_point = adsk.core.Point3D.create(
+        ((e_midpoint.x * 0.35) + (cd_midpoint.x * 0.65)),
+        ((e_midpoint.y * 0.35) + (cd_midpoint.y * 0.65)),
+        0.0,
+    )
+    c_shape_profiles = get_profiles_nearest_sketch_points(
+        sketch,
+        [lid_profile_target_point, cut_face_profile_target_point]
+    )
+
+    return {
+        'sketch': sketch,
+        'profiles': c_shape_profiles,
+        'ab_curve': ab_curve,
+        'cd_curve': cd_curve,
+        'e_curve': e_curve,
+        'ad_curve': ad_curve,
+        'bc_curve': bc_curve,
+        'A': sketch.sketchToModelSpace(named_sketch_points['A']),
+        'B': sketch.sketchToModelSpace(named_sketch_points['B']),
+        'C': sketch.sketchToModelSpace(named_sketch_points['C']),
+        'D': sketch.sketchToModelSpace(named_sketch_points['D']),
+        'F': sketch.sketchToModelSpace(named_sketch_points['F']),
+        'G': sketch.sketchToModelSpace(named_sketch_points['G']),
+    }
 
 
 def create_upper_stop_sketch(root_comp):
@@ -382,6 +856,44 @@ def find_bottom_slope_face(body, tolerance=1e-6):
     return max(matching_faces, key=lambda face: face.area)
 
 
+def find_inner_shell_lid_slope_face(body, tolerance=1e-6):
+    matching_faces = []
+    target_slope = math.tan(math.radians(4.75))
+    slope_tolerance = 0.02
+
+    for face in body.faces:
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > tolerance:
+            continue
+
+        if abs(normal.y) <= tolerance or abs(normal.z) <= tolerance:
+            continue
+
+        slope = abs(normal.y / normal.z)
+        if abs(slope - target_slope) > slope_tolerance:
+            continue
+
+        box = face.boundingBox
+        if (
+            box.maxPoint.x > tolerance
+            or box.minPoint.x < -8.0 - tolerance
+            or box.maxPoint.z < 2.0 - tolerance
+            or box.minPoint.z > 2.58 + tolerance
+        ):
+            continue
+
+        matching_faces.append(face)
+
+    if not matching_faces:
+        raise RuntimeError('内殻蓋部斜面を取得できませんでした。')
+
+    return max(matching_faces, key=lambda face: face.area)
+
+
 def find_face_by_named_attribute(body, name):
     for face in body.faces:
         attribute = face.attributes.itemByName('fusion_scripts', 'name')
@@ -408,6 +920,20 @@ def apply_constant_radius_fillet(root_comp, edge, radius_cm):
     fillet_input = fillets.createInput()
     edge_collection = adsk.core.ObjectCollection.create()
     edge_collection.add(edge)
+
+    radius_value = adsk.core.ValueInput.createByReal(radius_cm)
+    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, True)
+
+    return fillets.add(fillet_input)
+
+
+def apply_constant_radius_fillet_to_edges(root_comp, edges, radius_cm):
+    fillets = root_comp.features.filletFeatures
+    fillet_input = fillets.createInput()
+    edge_collection = adsk.core.ObjectCollection.create()
+
+    for edge in edges:
+        edge_collection.add(edge)
 
     radius_value = adsk.core.ValueInput.createByReal(radius_cm)
     fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, True)
@@ -530,7 +1056,9 @@ def run(context):
         body = helpers.get_body_from_feature(base_feature)
         split_face = helpers.find_face_by_axis_value(body, 'x', 0.0)
         split_sketch = create_split_triangle_on_face(root_comp, split_face, helpers)
+        inner_shell_lid_slope_cut_sketch = create_inner_shell_lid_slope_cut_sketch(root_comp)
         split_profile = get_smallest_profile(split_sketch)
+        inner_shell_lid_profile = helpers.get_largest_profile(inner_shell_lid_slope_cut_sketch)
 
         extrude_profile(
             root_comp,
@@ -569,6 +1097,47 @@ def run(context):
         )
         inner_shell_outer_body = helpers.get_body_from_feature(inner_shell_outer_feature)
         add_named_attribute(inner_shell_outer_body, '内殻外周')
+
+        extrude_profile(
+            root_comp,
+            inner_shell_lid_profile,
+            8.0,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.CutFeatureOperation
+        )
+        inner_shell_lid_slope_face = find_inner_shell_lid_slope_face(inner_shell_outer_body)
+        add_named_attribute(inner_shell_lid_slope_face, '内殻蓋部斜面')
+        inner_shell_lid_face_result = create_inner_shell_lid_face_sketch(root_comp, inner_shell_lid_slope_face)
+        extrude_profiles(
+            root_comp,
+            inner_shell_lid_face_result['profiles'],
+            0.23,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation
+        )
+        inner_shell_lid_slope_face = find_inner_shell_lid_slope_face(inner_shell_outer_body)
+        inner_shell_lid_inner_arc_edge = find_non_linear_edge_near_points(
+            inner_shell_lid_slope_face,
+            [inner_shell_lid_face_result['F'], inner_shell_lid_face_result['G']]
+        )
+        inner_shell_lid_df_edge = find_linear_edge_near_points(
+            inner_shell_lid_slope_face,
+            [inner_shell_lid_face_result['D'], inner_shell_lid_face_result['F']]
+        )
+        inner_shell_lid_cg_edge = find_linear_edge_near_points(
+            inner_shell_lid_slope_face,
+            [inner_shell_lid_face_result['C'], inner_shell_lid_face_result['G']],
+            excluded_tokens={inner_shell_lid_df_edge.entityToken}
+        )
+        apply_constant_radius_fillet_to_edges(
+            root_comp,
+            [
+                inner_shell_lid_inner_arc_edge,
+                inner_shell_lid_df_edge,
+                inner_shell_lid_cg_edge,
+            ],
+            0.2
+        )
 
         top_face = helpers.find_face_by_axis_value(body, 'z', 0.0)
         outer_shell_option2_sketch = create_outer_shell_option2_cut_sketch(root_comp, top_face, helpers)
