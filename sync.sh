@@ -3,6 +3,7 @@
 BASE_SRC="$HOME/fusion_scripts"
 BASE_DST="/mnt/c/Users/6plat/AppData/Roaming/Autodesk/Autodesk Fusion 360/API/Scripts"
 CORE_SRC="$BASE_SRC/core"
+FUSION_APP_SRC="$BASE_SRC/fusion_app"
 
 for file in "$BASE_SRC"/*.py; do
     [ -e "$file" ] || continue
@@ -15,6 +16,11 @@ for file in "$BASE_SRC"/*.py; do
     if [ -d "$CORE_SRC" ]; then
         mkdir -p "$BASE_DST/$name/core"
         cp "$CORE_SRC"/*.py "$BASE_DST/$name/core/"
+    fi
+
+    if [ -d "$FUSION_APP_SRC" ]; then
+        mkdir -p "$BASE_DST/$name/fusion_app"
+        cp "$FUSION_APP_SRC"/*.py "$BASE_DST/$name/fusion_app/"
     fi
 
     echo "Synced: $name"
