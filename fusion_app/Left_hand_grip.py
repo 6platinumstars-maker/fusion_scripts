@@ -700,6 +700,73 @@ def create_outer_bottom_semicircle_sketch(root_comp, face, helpers):
     return sketch
 
 
+def create_retainer_outer_fan_sketch(root_comp, face, helpers):
+    sketch = helpers.create_sketch_on_face(root_comp, face, '留金部外部 ')
+
+    center_x = mm_to_cm(0.0)
+    center_y = mm_to_cm(5.0)
+    center_z = mm_to_cm(-8.48)
+    radius_cm = mm_to_cm(17.0)
+
+    center_point = to_sketch_space(sketch, center_x, center_y, center_z)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(center_point, radius_cm)
+
+    lines = sketch.sketchCurves.sketchLines
+    auxiliary_angles_deg = [135.0, 225.0]
+    radial_angles_deg = [127.5, 142.5, 217.5, 232.5]
+
+    for angle_deg in auxiliary_angles_deg:
+        angle_rad = math.radians(angle_deg)
+        target_point = to_sketch_space(
+            sketch,
+            center_x + (radius_cm * math.cos(angle_rad)),
+            center_y + (radius_cm * math.sin(angle_rad)),
+            center_z,
+        )
+        line = lines.addByTwoPoints(center_point, target_point)
+        line.isConstruction = True
+
+    for angle_deg in radial_angles_deg:
+        angle_rad = math.radians(angle_deg)
+        target_point = to_sketch_space(
+            sketch,
+            center_x + (radius_cm * math.cos(angle_rad)),
+            center_y + (radius_cm * math.sin(angle_rad)),
+            center_z,
+        )
+        lines.addByTwoPoints(center_point, target_point)
+
+    return sketch
+
+
+def get_retainer_outer_fan_profiles(sketch):
+    center_x = mm_to_cm(0.0)
+    center_y = mm_to_cm(5.0)
+    center_z = mm_to_cm(-8.48)
+    target_radius_cm = mm_to_cm(8.5)
+    target_angles_deg = [135.0, 225.0]
+
+    profiles = []
+    selected_tokens = set()
+
+    for angle_deg in target_angles_deg:
+        angle_rad = math.radians(angle_deg)
+        target_point = to_sketch_space(
+            sketch,
+            center_x + (target_radius_cm * math.cos(angle_rad)),
+            center_y + (target_radius_cm * math.sin(angle_rad)),
+            center_z,
+        )
+        profile = get_profile_nearest_sketch_point(sketch, target_point)
+        if profile.entityToken in selected_tokens:
+            raise RuntimeError('留金部の扇状プロファイルを2つ取得できませんでした。')
+
+        selected_tokens.add(profile.entityToken)
+        profiles.append(profile)
+
+    return profiles
+
+
 def create_joystick_receiver_sketch(root_comp):
     sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
     sketch.name = 'ジョイステック受け'
@@ -975,19 +1042,57 @@ def find_shared_linear_edge(face_a, face_b):
     raise RuntimeError('下部止部のフィレット対象エッジを取得できませんでした。')
 
 
-def apply_constant_radius_fillet(root_comp, edge, radius_cm):
+def find_vertical_linear_edges(edges, tolerance=1e-3):
+    matching_edges = []
+
+    for edge in edges:
+        geometry = adsk.core.Line3D.cast(edge.geometry)
+        if not geometry:
+            continue
+
+        start_point = edge.startVertex.geometry
+        end_point = edge.endVertex.geometry
+        if abs(start_point.x - end_point.x) > tolerance or abs(start_point.y - end_point.y) > tolerance:
+            continue
+
+        if abs(start_point.z - end_point.z) <= tolerance:
+            continue
+
+        matching_edges.append(edge)
+
+    if not matching_edges:
+        raise RuntimeError('留金部の Z 方向エッジを取得できませんでした。')
+
+    return matching_edges
+
+
+def get_unique_edges_from_faces(faces):
+    unique_edges = []
+    seen_tokens = set()
+
+    for face in faces:
+        for edge in face.edges:
+            if edge.entityToken in seen_tokens:
+                continue
+            seen_tokens.add(edge.entityToken)
+            unique_edges.append(edge)
+
+    return unique_edges
+
+
+def apply_constant_radius_fillet(root_comp, edge, radius_cm, tangent_chain=True):
     fillets = root_comp.features.filletFeatures
     fillet_input = fillets.createInput()
     edge_collection = adsk.core.ObjectCollection.create()
     edge_collection.add(edge)
 
     radius_value = adsk.core.ValueInput.createByReal(radius_cm)
-    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, True)
+    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, tangent_chain)
 
     return fillets.add(fillet_input)
 
 
-def apply_constant_radius_fillet_to_edges(root_comp, edges, radius_cm):
+def apply_constant_radius_fillet_to_edges(root_comp, edges, radius_cm, tangent_chain=True):
     fillets = root_comp.features.filletFeatures
     fillet_input = fillets.createInput()
     edge_collection = adsk.core.ObjectCollection.create()
@@ -996,7 +1101,7 @@ def apply_constant_radius_fillet_to_edges(root_comp, edges, radius_cm):
         edge_collection.add(edge)
 
     radius_value = adsk.core.ValueInput.createByReal(radius_cm)
-    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, True)
+    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, tangent_chain)
 
     return fillets.add(fillet_input)
 
@@ -1057,12 +1162,201 @@ def find_arc_edges_by_xy_radius(body, center_x, center_y, radius_cm, tolerance=1
     return matching_edges
 
 
+def find_arc_edges_by_xy_radius_and_z(body, center_x, center_y, radius_cm, z_value, tolerance=1e-6):
+    matching_edges = []
+
+    for edge in body.edges:
+        geometry = edge.geometry
+        circle = adsk.core.Circle3D.cast(geometry)
+        arc = adsk.core.Arc3D.cast(geometry)
+
+        if circle:
+            center = circle.center
+            radius = circle.radius
+        elif arc:
+            center = arc.center
+            radius = arc.radius
+        else:
+            continue
+
+        if (
+            abs(center.x - center_x) <= tolerance
+            and abs(center.y - center_y) <= tolerance
+            and abs(center.z - z_value) <= tolerance
+            and abs(radius - radius_cm) <= tolerance
+        ):
+            matching_edges.append(edge)
+
+    return matching_edges
+
+
+def find_arc_edges_on_faces_by_xy_radius(faces, center_x, center_y, radius_cm, tolerance=1e-6):
+    matching_edges = []
+    seen_tokens = set()
+
+    for face in faces:
+        for index in range(face.edges.count):
+            edge = face.edges.item(index)
+            if edge.entityToken in seen_tokens:
+                continue
+
+            geometry = edge.geometry
+            circle = adsk.core.Circle3D.cast(geometry)
+            arc = adsk.core.Arc3D.cast(geometry)
+
+            if circle:
+                center = circle.center
+                radius = circle.radius
+            elif arc:
+                center = arc.center
+                radius = arc.radius
+            else:
+                continue
+
+            if (
+                abs(center.x - center_x) <= tolerance
+                and abs(center.y - center_y) <= tolerance
+                and abs(radius - radius_cm) <= tolerance
+            ):
+                seen_tokens.add(edge.entityToken)
+                matching_edges.append(edge)
+
+    return matching_edges
+
+
+def find_outer_bottom_semicircle_top_edges(feature, center_x, center_y, radius_cm, base_z, tolerance=1e-6):
+    matching_edges = []
+    seen_tokens = set()
+
+    for face in feature.sideFaces:
+        for index in range(face.edges.count):
+            edge = face.edges.item(index)
+            if edge.entityToken in seen_tokens:
+                continue
+
+            geometry = edge.geometry
+            circle = adsk.core.Circle3D.cast(geometry)
+            arc = adsk.core.Arc3D.cast(geometry)
+
+            if circle:
+                center = circle.center
+                radius = circle.radius
+            elif arc:
+                center = arc.center
+                radius = arc.radius
+            else:
+                continue
+
+            if (
+                abs(center.x - center_x) > tolerance
+                or abs(center.y - center_y) > tolerance
+                or abs(radius - radius_cm) > tolerance
+            ):
+                continue
+
+            has_upper_xy_face = False
+            for adjacent_face in edge.faces:
+                if not is_xy_plane_face(adjacent_face, tolerance):
+                    continue
+                if adjacent_face.boundingBox.maxPoint.z > base_z + tolerance:
+                    has_upper_xy_face = True
+                    break
+
+            if not has_upper_xy_face:
+                continue
+
+            seen_tokens.add(edge.entityToken)
+            matching_edges.append(edge)
+
+    if not matching_edges:
+        raise RuntimeError('止金半円部の上側円弧エッジを取得できませんでした。')
+
+    return matching_edges
+
+
+def find_arc_edges_by_xy_radius_adjacent_upper_xy_face(body, center_x, center_y, radius_cm, base_z, tolerance=1e-6):
+    matching_edges = []
+    seen_tokens = set()
+
+    for edge in body.edges:
+        if edge.entityToken in seen_tokens:
+            continue
+
+        geometry = edge.geometry
+        circle = adsk.core.Circle3D.cast(geometry)
+        arc = adsk.core.Arc3D.cast(geometry)
+
+        if circle:
+            center = circle.center
+            radius = circle.radius
+        elif arc:
+            center = arc.center
+            radius = arc.radius
+        else:
+            continue
+
+        if (
+            abs(center.x - center_x) > tolerance
+            or abs(center.y - center_y) > tolerance
+            or abs(radius - radius_cm) > tolerance
+        ):
+            continue
+
+        has_upper_xy_face = False
+        for adjacent_face in edge.faces:
+            if not is_xy_plane_face(adjacent_face, tolerance):
+                continue
+            if adjacent_face.boundingBox.maxPoint.z > base_z + tolerance:
+                has_upper_xy_face = True
+                break
+
+        if not has_upper_xy_face:
+            continue
+
+        seen_tokens.add(edge.entityToken)
+        matching_edges.append(edge)
+
+    if not matching_edges:
+        raise RuntimeError('止金半円部の上側 XY 面に接する円弧エッジを取得できませんでした。')
+
+    return matching_edges
+
+
 def exclude_edges_on_face(edges, face):
     excluded_tokens = {face.edges.item(index).entityToken for index in range(face.edges.count)}
     filtered_edges = [edge for edge in edges if edge.entityToken not in excluded_tokens]
 
     if not filtered_edges:
         raise RuntimeError('底面外部に接していない止金半円部の円弧エッジを取得できませんでした。')
+
+    return filtered_edges
+
+
+def keep_edges_adjacent_to_xy_face(edges, excluded_face, tolerance=1e-6):
+    filtered_edges = []
+
+    for edge in edges:
+        for face in edge.faces:
+            if face.entityToken == excluded_face.entityToken:
+                continue
+            if is_xy_plane_face(face, tolerance):
+                filtered_edges.append(edge)
+                break
+
+    if not filtered_edges:
+        raise RuntimeError('止金半円部の上側 XY 面に接する円弧エッジを取得できませんでした。')
+
+    return filtered_edges
+
+
+def get_edges_on_faces(edges, faces):
+    face_edge_tokens = set()
+
+    for face in faces:
+        for index in range(face.edges.count):
+            face_edge_tokens.add(face.edges.item(index).entityToken)
+
+    filtered_edges = [edge for edge in edges if edge.entityToken in face_edge_tokens]
 
     return filtered_edges
 
@@ -1154,6 +1448,8 @@ def run(context):
         )
 
         body = helpers.get_body_from_feature(base_feature)
+        body.name = '内殻'
+        add_named_attribute(body, '内殻')
         split_face = helpers.find_face_by_axis_value(body, 'x', 0.0)
         split_sketch = create_split_triangle_on_face(root_comp, split_face, helpers)
         inner_shell_lid_slope_cut_sketch = create_inner_shell_lid_slope_cut_sketch(root_comp)
@@ -1307,6 +1603,28 @@ def run(context):
         add_named_attribute(lower_stop_top_face, '下部止部平面')
 
         body = root_comp.bRepBodies.item(0)
+        retainer_outer_center = create_model_point_from_mm(0.0, 5.0, -8.48)
+        retainer_outer_face = find_xy_face_through_point(body, retainer_outer_center)
+        add_named_attribute(retainer_outer_face, '留金部外部 ')
+        retainer_outer_fan_sketch = create_retainer_outer_fan_sketch(root_comp, retainer_outer_face, helpers)
+        retainer_outer_fan_profiles = get_retainer_outer_fan_profiles(retainer_outer_fan_sketch)
+        retainer_feature = extrude_profiles(
+            root_comp,
+            retainer_outer_fan_profiles,
+            mm_to_cm(2.0),
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation
+        )
+        add_named_attribute(retainer_feature, '留金部')
+        retainer_side_edges = get_unique_edges_from_faces(retainer_feature.sideFaces)
+        apply_constant_radius_fillet_to_edges(
+            root_comp,
+            find_vertical_linear_edges(retainer_side_edges),
+            mm_to_cm(1.0),
+            tangent_chain=False
+        )
+
+        body = root_comp.bRepBodies.item(0)
         outer_bottom_semicircle_center = create_model_point_from_mm(0.0, 5.0, -3.0)
         outer_bottom_face = find_xy_face_through_point(body, outer_bottom_semicircle_center)
         add_named_attribute(outer_bottom_face, '底面外部')
@@ -1327,7 +1645,7 @@ def run(context):
         outer_bottom_semicircle_feature = extrude_profile(
             root_comp,
             outer_bottom_semicircle_profile,
-            mm_to_cm(3.87),
+            mm_to_cm(5.48),
             adsk.fusion.ExtentDirections.PositiveExtentDirection,
             adsk.fusion.FeatureOperations.JoinFeatureOperation
         )
@@ -1335,18 +1653,20 @@ def run(context):
 
         body = root_comp.bRepBodies.item(0)
         outer_bottom_face = find_face_by_named_attribute(body, '底面外部')
+        outer_bottom_semicircle_fillet_edges = exclude_edges_on_face(
+            find_arc_edges_by_xy_radius(
+                body,
+                mm_to_cm(0.0),
+                mm_to_cm(5.0),
+                mm_to_cm(14.96)
+            ),
+            outer_bottom_face
+        )
         apply_constant_radius_fillet_to_edges(
             root_comp,
-            exclude_edges_on_face(
-                find_arc_edges_by_xy_radius(
-                    body,
-                    mm_to_cm(0.0),
-                    mm_to_cm(5.0),
-                    mm_to_cm(14.96)
-                ),
-                outer_bottom_face
-            ),
-            mm_to_cm(1.0)
+            outer_bottom_semicircle_fillet_edges,
+            mm_to_cm(1.0),
+            tangent_chain=False
         )
 
         joystick_receiver_sketch = create_joystick_receiver_sketch(root_comp)
@@ -1368,6 +1688,9 @@ def run(context):
             adsk.fusion.ExtentDirections.NegativeExtentDirection,
             adsk.fusion.FeatureOperations.CutFeatureOperation
         )
+        body = root_comp.bRepBodies.item(0)
+        body.name = '内殻'
+        add_named_attribute(body, '内殻')
 
     except:
         if ui:
