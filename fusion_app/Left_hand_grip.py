@@ -1412,10 +1412,14 @@ def find_lower_stop_top_face(body, tolerance=1e-6):
 
 def load_fusion_helpers():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    core_dir = os.path.join(script_dir, 'core')
+    candidate_core_dirs = [
+        os.path.join(script_dir, 'core'),
+        os.path.join(os.path.dirname(script_dir), 'core'),
+    ]
 
-    if core_dir not in sys.path:
-        sys.path.append(core_dir)
+    for core_dir in candidate_core_dirs:
+        if os.path.isdir(core_dir) and core_dir not in sys.path:
+            sys.path.append(core_dir)
 
     import fusion_helpers
 
