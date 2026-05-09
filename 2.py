@@ -3,17 +3,24 @@ import adsk.fusion
 import traceback
 
 try:
-    from .fusion_app import grip
-    from .fusion_app import helpers
-    from .fusion_app import inner_shell
-    from .fusion_app import naming
-    from .fusion_app import outer_shell
+    from . import grip
+    from . import helpers
+    from . import inner_shell
+    from . import naming
+    from . import outer_shell
 except ImportError:
-    from fusion_app import grip
-    from fusion_app import helpers
-    from fusion_app import inner_shell
-    from fusion_app import naming
-    from fusion_app import outer_shell
+    try:
+        from .fusion_app import grip
+        from .fusion_app import helpers
+        from .fusion_app import inner_shell
+        from .fusion_app import naming
+        from .fusion_app import outer_shell
+    except ImportError:
+        from fusion_app import grip
+        from fusion_app import helpers
+        from fusion_app import inner_shell
+        from fusion_app import naming
+        from fusion_app import outer_shell
 
 
 def build_all(context=None, grip_params=None, outer_shell_params=None):

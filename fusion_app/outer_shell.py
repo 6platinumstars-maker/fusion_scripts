@@ -17,6 +17,18 @@ INNER_SHELL_TOP_EDGE_START_MM = (-66.67, 26.918)
 INNER_SHELL_TOP_EDGE_END_MM = (-25.0, 30.0)
 INNER_SHELL_LOWER_STOP_TOP_Y_MM = -20.0
 OUTER_SHELL_CONTACT_FACE_NAME = '外殻内殻接面'
+OUTER_SHELL_BOTTOM_OUTER_FACE_POINT_MM = (-5.0, -35.0, -3.0)
+OUTER_SHELL_BOTTOM_OUTER_EXTRUDE_DISTANCE_MM = -0.2
+OUTER_SHELL_BOTTOM_OUTER_SKETCH_NAME = '外殻底面外側'
+OUTER_SHELL_BOTTOM_OUTER_SKETCH_Z_MM = -3.2
+OUTER_SHELL_BOTTOM_OUTER_REGION_TARGET_MM = (-60.0, 0.0, 0.0)
+OUTER_SHELL_BOTTOM_OUTER_REGION_EXTRUDE_DISTANCE_MM = -2.8
+OUTER_SHELL_BOTTOM_OUTER_FILLET_RADIUS_MM = 3.0
+OUTER_SHELL_BOTTOM_OUTER_FILLET_Z_MM = -6.0
+OUTER_SHELL_BOTTOM_OUTER_FILLET_REFERENCE_POINTS_MM = (
+    (-5.0, -23.3, -6.0),
+    (-25.0, -19.174, -6.0),
+)
 
 
 def mm_to_cm(value_mm):
@@ -35,6 +47,14 @@ def create_sketch_point(sketch, point_mm):
     return sketch.sketchPoints.add(create_point_mm(*point_mm))
 
 
+def get_point_distance(point_a, point_b):
+    return math.sqrt(
+        ((point_a.x - point_b.x) ** 2)
+        + ((point_a.y - point_b.y) ** 2)
+        + ((point_a.z - point_b.z) ** 2)
+    )
+
+
 def get_body_from_feature(feature):
     body = feature.bodies.item(0)
     if not body:
@@ -44,6 +64,43 @@ def get_body_from_feature(feature):
 
 def get_face_collection(body):
     return [body.faces.item(index) for index in range(body.faces.count)]
+
+
+def get_nearest_distance_to_edge(edge, target_point, sample_count=80):
+    evaluator = edge.evaluator
+    success, start_param, end_param = evaluator.getParameterExtents()
+    if not success:
+        raise RuntimeError('辺のパラメータ範囲を取得できませんでした。')
+
+    parameters = [
+        start_param + ((end_param - start_param) * index / sample_count)
+        for index in range(sample_count + 1)
+    ]
+    success, sampled_points = evaluator.getPointsAtParameters(parameters)
+    if not success:
+        raise RuntimeError('辺上のサンプル点を取得できませんでした。')
+
+    return min(get_point_distance(point, target_point) for point in sampled_points)
+
+
+def find_face_through_point_on_constant_axis(body, point_mm, axis, tolerance_cm):
+    target_point = create_point_mm(*point_mm)
+
+    for face in get_face_collection(body):
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        box = face.boundingBox
+        min_value = getattr(box.minPoint, axis)
+        max_value = getattr(box.maxPoint, axis)
+        if abs(max_value - min_value) > tolerance_cm:
+            continue
+
+        if face.isPointOnFace(target_point, tolerance_cm):
+            return face
+
+    raise RuntimeError('指定条件に一致する外殻面を取得できませんでした。')
 
 
 def find_inner_contact_faces(outer_shell_body, inner_shell_body, tolerance_cm):
@@ -86,6 +143,32 @@ def offset_contact_faces(root_comp, outer_shell_body, inner_shell_body):
             helpers.add_named_attribute(face, OUTER_SHELL_CONTACT_FACE_NAME)
 
     return offset_feature
+
+
+def extrude_xy_face_in_negative_z(root_comp, face, distance_mm, tolerance=1e-6):
+    geometry = adsk.core.Plane.cast(face.geometry)
+    if not geometry:
+        raise RuntimeError('押し出し対象面の平面ジオメトリを取得できませんでした。')
+
+    normal = geometry.normal
+    if abs(normal.x) > tolerance or abs(normal.y) > tolerance or abs(normal.z) <= tolerance:
+        raise RuntimeError('押し出し対象面が Z 方向法線を持っていません。')
+
+    direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if normal.z > 0.0:
+        direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        face,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation
+    )
+    distance_value = adsk.core.ValueInput.createByReal(mm_to_cm(distance_mm))
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
 
 
 def get_curve_geometry(sketch_curve):
@@ -269,6 +352,20 @@ def offset_point_from_circle(center_mm, point_mm, offset_mm):
     )
 
 
+def vertical_line_circle_intersections(center_mm, radius_mm, x_mm):
+    cx_mm, cy_mm = center_mm
+    offset_x_mm = x_mm - cx_mm
+    remaining = (radius_mm * radius_mm) - (offset_x_mm * offset_x_mm)
+    if remaining < 0.0:
+        raise RuntimeError('円と鉛直線の交点を取得できませんでした。')
+
+    offset_y_mm = math.sqrt(max(remaining, 0.0))
+    return [
+        (x_mm, cy_mm - offset_y_mm),
+        (x_mm, cy_mm + offset_y_mm),
+    ]
+
+
 def build_outer_shell_reference_points(params):
     clearance_mm = params.get('clearance_mm', naming.DEFAULT_OUTER_SHELL_PARAMS['clearance_mm'])
 
@@ -396,6 +493,207 @@ def extrude_outer_shell_profile(root_comp, sketch, inner_shell_body):
     return body
 
 
+def add_bottom_outer_face(root_comp, outer_shell_body):
+    app = adsk.core.Application.get()
+    tolerance_cm = max(app.pointTolerance, 1e-5)
+    face = find_face_through_point_on_constant_axis(
+        outer_shell_body,
+        OUTER_SHELL_BOTTOM_OUTER_FACE_POINT_MM,
+        'z',
+        tolerance_cm,
+    )
+    extrude_xy_face_in_negative_z(
+        root_comp,
+        face,
+        OUTER_SHELL_BOTTOM_OUTER_EXTRUDE_DISTANCE_MM,
+        tolerance_cm,
+    )
+
+
+def create_bottom_outer_face_sketch(root_comp, outer_shell_body):
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByOffset(
+        root_comp.xYConstructionPlane,
+        adsk.core.ValueInput.createByReal(mm_to_cm(OUTER_SHELL_BOTTOM_OUTER_SKETCH_Z_MM)),
+    )
+    sketch_plane = planes.add(plane_input)
+
+    sketch = root_comp.sketches.add(sketch_plane)
+    sketch.name = OUTER_SHELL_BOTTOM_OUTER_SKETCH_NAME
+
+    circles = sketch.sketchCurves.sketchCircles
+    lines = sketch.sketchCurves.sketchLines
+
+    circle_center_mm = (0.0, 5.0, 0.0)
+    circle_point_mm = (-5.0, -23.3, 0.0)
+    b_start_mm = (-25.0, 30.0, 0.0)
+    b_pass_mm = (-25.0, 14.0, 0.0)
+    c_pass_mm = (-51.8, 28.0, 0.0)
+    d_start_mm = (-51.8, 35.0, 0.0)
+    d_pass_mm = (-51.8, 28.0, 0.0)
+    f_point_mm = (-5.0, -35.0, 0.0)
+    g_point_mm = (-90.0, -35.0, 0.0)
+    h_point_mm = (-90.0, 35.0, 0.0)
+    i_point_mm = (-5.0, -34.0, 0.0)
+    circle_radius_mm = math.hypot(
+        circle_point_mm[0] - circle_center_mm[0],
+        circle_point_mm[1] - circle_center_mm[1],
+    )
+    point_e_xy_mm = min(
+        vertical_line_circle_intersections(
+            (circle_center_mm[0], circle_center_mm[1]),
+            circle_radius_mm,
+            b_start_mm[0],
+        ),
+        key=lambda point: math.hypot(point[0] - b_start_mm[0], point[1] - b_start_mm[1]),
+    )
+    point_e_mm = (point_e_xy_mm[0], point_e_xy_mm[1], 0.0)
+    point_j_xy_mm = min(
+        vertical_line_circle_intersections(
+            (circle_center_mm[0], circle_center_mm[1]),
+            circle_radius_mm,
+            i_point_mm[0],
+        ),
+        key=lambda point: math.hypot(point[0] - i_point_mm[0], point[1] - i_point_mm[1]),
+    )
+    point_j_mm = (point_j_xy_mm[0], point_j_xy_mm[1], 0.0)
+
+    circles.addByCenterRadius(
+        create_point_mm(*circle_center_mm),
+        circle_radius_mm / 10.0,
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*b_start_mm),
+        create_point_mm(*b_pass_mm),
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*b_start_mm),
+        create_point_mm(*c_pass_mm),
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*d_start_mm),
+        create_point_mm(*d_pass_mm),
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*f_point_mm),
+        create_point_mm(*g_point_mm),
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*g_point_mm),
+        create_point_mm(*h_point_mm),
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*h_point_mm),
+        create_point_mm(*d_start_mm),
+    )
+    lines.addByTwoPoints(
+        create_point_mm(*f_point_mm),
+        create_point_mm(*point_j_mm),
+    )
+
+    for point_mm in (
+        circle_center_mm,
+        circle_point_mm,
+        b_start_mm,
+        b_pass_mm,
+        c_pass_mm,
+        d_start_mm,
+        d_pass_mm,
+        f_point_mm,
+        g_point_mm,
+        h_point_mm,
+        i_point_mm,
+        point_e_mm,
+        point_j_mm,
+    ):
+        create_sketch_point(sketch, point_mm)
+
+    return sketch
+
+
+def extrude_bottom_outer_region(root_comp, sketch):
+    profile = get_profile_nearest_point(
+        sketch,
+        create_point_mm(*OUTER_SHELL_BOTTOM_OUTER_REGION_TARGET_MM),
+    )
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation
+    )
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(abs(OUTER_SHELL_BOTTOM_OUTER_REGION_EXTRUDE_DISTANCE_MM))
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        adsk.fusion.ExtentDirections.NegativeExtentDirection,
+    )
+    extrudes.add(extrude_input)
+
+
+def find_arc_edge_near_points_on_xy_plane(body, reference_points_mm, z_value_mm, tolerance_cm=1e-5):
+    target_points = [create_point_mm(*point_mm) for point_mm in reference_points_mm]
+    target_z = mm_to_cm(z_value_mm)
+    candidate_edge = None
+    candidate_score = None
+
+    for edge in body.edges:
+        geometry = edge.geometry
+        circle = adsk.core.Circle3D.cast(geometry)
+        arc = adsk.core.Arc3D.cast(geometry)
+
+        if circle:
+            center = circle.center
+            normal = circle.normal
+        elif arc:
+            center = arc.center
+            normal = arc.normal
+        else:
+            continue
+
+        if abs(center.z - target_z) > tolerance_cm:
+            continue
+        if abs(normal.x) > tolerance_cm or abs(normal.y) > tolerance_cm:
+            continue
+
+        score = sum(get_nearest_distance_to_edge(edge, point) for point in target_points)
+        if candidate_score is None or score < candidate_score:
+            candidate_score = score
+            candidate_edge = edge
+
+    if not candidate_edge:
+        raise RuntimeError('指定条件に一致する円弧エッジを取得できませんでした。')
+
+    return candidate_edge
+
+
+def apply_constant_radius_fillet(root_comp, edge, radius_mm, tangent_chain=True):
+    fillets = root_comp.features.filletFeatures
+    fillet_input = fillets.createInput()
+    edge_collection = adsk.core.ObjectCollection.create()
+    edge_collection.add(edge)
+
+    radius_value = adsk.core.ValueInput.createByReal(mm_to_cm(radius_mm))
+    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, tangent_chain)
+
+    return fillets.add(fillet_input)
+
+
+def add_bottom_outer_arc_fillet(root_comp, outer_shell_body):
+    edge = find_arc_edge_near_points_on_xy_plane(
+        outer_shell_body,
+        OUTER_SHELL_BOTTOM_OUTER_FILLET_REFERENCE_POINTS_MM,
+        OUTER_SHELL_BOTTOM_OUTER_FILLET_Z_MM,
+    )
+    apply_constant_radius_fillet(
+        root_comp,
+        edge,
+        OUTER_SHELL_BOTTOM_OUTER_FILLET_RADIUS_MM,
+    )
+
+
 def build_outer_shell(root_comp, inner_shell_body, params=None):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -406,4 +704,9 @@ def build_outer_shell(root_comp, inner_shell_body, params=None):
         params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
 
     sketch = create_outer_shell_sketch(root_comp, inner_shell_body, params)
-    return extrude_outer_shell_profile(root_comp, sketch, inner_shell_body)
+    outer_shell_body = extrude_outer_shell_profile(root_comp, sketch, inner_shell_body)
+    add_bottom_outer_face(root_comp, outer_shell_body)
+    bottom_outer_sketch = create_bottom_outer_face_sketch(root_comp, outer_shell_body)
+    extrude_bottom_outer_region(root_comp, bottom_outer_sketch)
+    add_bottom_outer_arc_fillet(root_comp, outer_shell_body)
+    return outer_shell_body
