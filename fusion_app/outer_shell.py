@@ -19,6 +19,17 @@ INNER_SHELL_LOWER_STOP_TOP_Y_MM = -20.0
 OUTER_SHELL_CONTACT_FACE_NAME = '外殻内殻接面'
 OUTER_SHELL_BOTTOM_OUTER_FACE_POINT_MM = (-5.0, -35.0, -3.0)
 OUTER_SHELL_BOTTOM_OUTER_EXTRUDE_DISTANCE_MM = -0.2
+OUTER_SHELL_OUTER_PERIMETER_FACE_POINT_MM = (-5.0, -35.0, 0.0)
+OUTER_SHELL_OUTER_PERIMETER_EXTRUDE_DISTANCE_MM = 29.0
+OUTER_SHELL_REFERENCE_CIRCLE_SKETCH_NAME = '外殻外周円'
+OUTER_SHELL_REFERENCE_CIRCLE_CENTER_MM = (-42.0, 5.0, 0.0)
+OUTER_SHELL_REFERENCE_CIRCLE_RADIUS_MM = 33.0
+OUTER_SHELL_REFERENCE_CIRCLE_FILLET_RADIUS_MM = 6.0
+OUTER_SHELL_REFERENCE_CIRCLE_FILLET_REFERENCE_POINTS_MM = (
+    (-9.0, 5.0, 0.0),
+    (-42.0, -28.0, 0.0),
+)
+INNER_SHELL_TEMP_MOVE_X_MM = 200.0
 OUTER_SHELL_BOTTOM_OUTER_SKETCH_NAME = '外殻底面外側'
 OUTER_SHELL_BOTTOM_OUTER_SKETCH_Z_MM = -3.2
 OUTER_SHELL_BOTTOM_OUTER_REGION_TARGET_MM = (-60.0, 0.0, 0.0)
@@ -28,6 +39,14 @@ OUTER_SHELL_BOTTOM_OUTER_FILLET_Z_MM = -6.0
 OUTER_SHELL_BOTTOM_OUTER_FILLET_REFERENCE_POINTS_MM = (
     (-5.0, -23.3, -6.0),
     (-25.0, -19.174, -6.0),
+)
+INNER_SHELL_LID_SLOPE_FACE_NAME = '内殻蓋部斜面'
+OUTER_SHELL_LID_INNER_PLANE_NAME = '外殻蓋部斜面内部'
+OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM = 0.2
+INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM = (
+    (-63.701, -27.138, 25.8),
+    (-62.178, -22.954, 25.452),
+    (-32.059, -20.122, 21.873),
 )
 
 
@@ -66,6 +85,130 @@ def get_face_collection(body):
     return [body.faces.item(index) for index in range(body.faces.count)]
 
 
+def find_face_by_named_attribute(body, name):
+    for face in get_face_collection(body):
+        attribute = face.attributes.itemByName(
+            naming.ATTRIBUTE_GROUP,
+            naming.ATTRIBUTE_NAME_KEY
+        )
+        if attribute and attribute.value == name:
+            return face
+    raise RuntimeError('指定された名前の面を取得できませんでした。')
+
+
+def find_body_face_by_named_attribute(root_comp, name):
+    for index in range(root_comp.bRepBodies.count):
+        body = root_comp.bRepBodies.item(index)
+        try:
+            face = find_face_by_named_attribute(body, name)
+            return body, face
+        except RuntimeError:
+            continue
+    raise RuntimeError('指定された名前の面を持つボディを取得できませんでした。')
+
+
+def find_inner_shell_lid_slope_face(body, tolerance=1e-6):
+    matching_faces = []
+    target_slope = math.tan(math.radians(4.75))
+    slope_tolerance = 0.02
+    reference_points = [create_point_mm(*point_mm) for point_mm in INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM]
+
+    for face in get_face_collection(body):
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > tolerance:
+            continue
+
+        if abs(normal.y) <= tolerance or abs(normal.z) <= tolerance:
+            continue
+
+        slope = abs(normal.y / normal.z)
+        if abs(slope - target_slope) > slope_tolerance:
+            continue
+
+        matching_faces.append(face)
+
+    if not matching_faces:
+        raise RuntimeError('内殻蓋部斜面を取得できませんでした。')
+
+    def face_score(face):
+        box = face.boundingBox
+        score = 0.0
+        for point in reference_points:
+            dx = 0.0
+            dy = 0.0
+            dz = 0.0
+            if point.x < box.minPoint.x:
+                dx = box.minPoint.x - point.x
+            elif point.x > box.maxPoint.x:
+                dx = point.x - box.maxPoint.x
+            if point.y < box.minPoint.y:
+                dy = box.minPoint.y - point.y
+            elif point.y > box.maxPoint.y:
+                dy = point.y - box.maxPoint.y
+            if point.z < box.minPoint.z:
+                dz = box.minPoint.z - point.z
+            elif point.z > box.maxPoint.z:
+                dz = point.z - box.maxPoint.z
+            score += dx + dy + dz
+        return score
+
+    return min(matching_faces, key=lambda face: (face_score(face), -face.area))
+
+
+def find_best_planar_face_near_reference_points(body, reference_points_mm, tolerance=1e-6):
+    reference_points = [create_point_mm(*point_mm) for point_mm in reference_points_mm]
+    candidate_faces = []
+
+    for face in get_face_collection(body):
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > 0.2:
+            continue
+        if abs(normal.y) <= tolerance or abs(normal.z) <= tolerance:
+            continue
+
+        box = face.boundingBox
+        score = 0.0
+        for point in reference_points:
+            dx = 0.0
+            dy = 0.0
+            dz = 0.0
+            if point.x < box.minPoint.x:
+                dx = box.minPoint.x - point.x
+            elif point.x > box.maxPoint.x:
+                dx = point.x - box.maxPoint.x
+            if point.y < box.minPoint.y:
+                dy = box.minPoint.y - point.y
+            elif point.y > box.maxPoint.y:
+                dy = point.y - box.maxPoint.y
+            if point.z < box.minPoint.z:
+                dz = box.minPoint.z - point.z
+            elif point.z > box.maxPoint.z:
+                dz = point.z - box.maxPoint.z
+            score += dx + dy + dz
+
+            signed_distance = abs(
+                normal.x * (point.x - geometry.origin.x)
+                + normal.y * (point.y - geometry.origin.y)
+                + normal.z * (point.z - geometry.origin.z)
+            )
+            score += signed_distance
+
+        candidate_faces.append((face, score))
+
+    if not candidate_faces:
+        raise RuntimeError('参照点近傍の平面面を取得できませんでした。')
+
+    return min(candidate_faces, key=lambda item: (item[1], -item[0].area))[0]
+
+
 def get_nearest_distance_to_edge(edge, target_point, sample_count=80):
     evaluator = edge.evaluator
     success, start_param, end_param = evaluator.getParameterExtents()
@@ -81,6 +224,48 @@ def get_nearest_distance_to_edge(edge, target_point, sample_count=80):
         raise RuntimeError('辺上のサンプル点を取得できませんでした。')
 
     return min(get_point_distance(point, target_point) for point in sampled_points)
+
+
+def get_body_bounding_box_center(body):
+    box = body.boundingBox
+    return adsk.core.Point3D.create(
+        (box.minPoint.x + box.maxPoint.x) / 2.0,
+        (box.minPoint.y + box.maxPoint.y) / 2.0,
+        (box.minPoint.z + box.maxPoint.z) / 2.0,
+    )
+
+
+def get_signed_distance_to_plane(plane_geometry, point):
+    origin = plane_geometry.origin
+    normal = plane_geometry.normal
+    vector = adsk.core.Vector3D.create(
+        point.x - origin.x,
+        point.y - origin.y,
+        point.z - origin.z,
+    )
+    return normal.dotProduct(vector)
+
+
+def move_body_by_translation(root_comp, body, x_mm=0.0, y_mm=0.0, z_mm=0.0):
+    bodies = adsk.core.ObjectCollection.create()
+    bodies.add(body)
+
+    transform = adsk.core.Matrix3D.create()
+    transform.translation = adsk.core.Vector3D.create(
+        mm_to_cm(x_mm),
+        mm_to_cm(y_mm),
+        mm_to_cm(z_mm),
+    )
+
+    move_features = root_comp.features.moveFeatures
+    move_input = move_features.createInput2(bodies)
+    move_input.defineAsFreeMove(transform)
+    move_feature = move_features.add(move_input)
+
+    moved_body = move_feature.bodies.item(0)
+    if not moved_body:
+        raise RuntimeError('移動後のボディを取得できませんでした。')
+    return moved_body
 
 
 def find_face_through_point_on_constant_axis(body, point_mm, axis, tolerance_cm):
@@ -101,6 +286,37 @@ def find_face_through_point_on_constant_axis(body, point_mm, axis, tolerance_cm)
             return face
 
     raise RuntimeError('指定条件に一致する外殻面を取得できませんでした。')
+
+
+def find_largest_xy_face_at_z_covering_point(body, point_mm, tolerance_cm):
+    target_x = mm_to_cm(point_mm[0])
+    target_y = mm_to_cm(point_mm[1])
+    target_z = mm_to_cm(point_mm[2])
+    candidate_faces = []
+
+    for face in get_face_collection(body):
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > tolerance_cm or abs(normal.y) > tolerance_cm or abs(normal.z) <= tolerance_cm:
+            continue
+
+        box = face.boundingBox
+        if abs(box.minPoint.z - target_z) > tolerance_cm or abs(box.maxPoint.z - target_z) > tolerance_cm:
+            continue
+        if target_x < box.minPoint.x - tolerance_cm or target_x > box.maxPoint.x + tolerance_cm:
+            continue
+        if target_y < box.minPoint.y - tolerance_cm or target_y > box.maxPoint.y + tolerance_cm:
+            continue
+
+        candidate_faces.append(face)
+
+    if not candidate_faces:
+        raise RuntimeError('指定条件に一致する上側 XY 面を取得できませんでした。')
+
+    return max(candidate_faces, key=lambda face: face.area)
 
 
 def find_inner_contact_faces(outer_shell_body, inner_shell_body, tolerance_cm):
@@ -156,6 +372,32 @@ def extrude_xy_face_in_negative_z(root_comp, face, distance_mm, tolerance=1e-6):
 
     direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
     if normal.z > 0.0:
+        direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        face,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation
+    )
+    distance_value = adsk.core.ValueInput.createByReal(mm_to_cm(distance_mm))
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+
+def extrude_xy_face_in_positive_z(root_comp, face, distance_mm, tolerance=1e-6):
+    geometry = adsk.core.Plane.cast(face.geometry)
+    if not geometry:
+        raise RuntimeError('押し出し対象面の平面ジオメトリを取得できませんでした。')
+
+    normal = geometry.normal
+    if abs(normal.x) > tolerance or abs(normal.y) > tolerance or abs(normal.z) <= tolerance:
+        raise RuntimeError('押し出し対象面が Z 方向法線を持っていません。')
+
+    direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if normal.z < 0.0:
         direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
 
     extrudes = root_comp.features.extrudeFeatures
@@ -510,6 +752,22 @@ def add_bottom_outer_face(root_comp, outer_shell_body):
     )
 
 
+def add_outer_perimeter_face(root_comp, outer_shell_body):
+    app = adsk.core.Application.get()
+    tolerance_cm = max(app.pointTolerance, 1e-5)
+    face = find_largest_xy_face_at_z_covering_point(
+        outer_shell_body,
+        OUTER_SHELL_OUTER_PERIMETER_FACE_POINT_MM,
+        tolerance_cm,
+    )
+    extrude_xy_face_in_positive_z(
+        root_comp,
+        face,
+        OUTER_SHELL_OUTER_PERIMETER_EXTRUDE_DISTANCE_MM,
+        tolerance_cm,
+    )
+
+
 def create_bottom_outer_face_sketch(root_comp, outer_shell_body):
     planes = root_comp.constructionPlanes
     plane_input = planes.createInput()
@@ -612,6 +870,88 @@ def create_bottom_outer_face_sketch(root_comp, outer_shell_body):
     return sketch
 
 
+def create_outer_perimeter_reference_circle_sketch(root_comp):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = OUTER_SHELL_REFERENCE_CIRCLE_SKETCH_NAME
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(
+        create_point_mm(*OUTER_SHELL_REFERENCE_CIRCLE_CENTER_MM),
+        mm_to_cm(OUTER_SHELL_REFERENCE_CIRCLE_RADIUS_MM),
+    )
+    create_sketch_point(sketch, OUTER_SHELL_REFERENCE_CIRCLE_CENTER_MM)
+    return sketch
+
+
+def cut_outer_perimeter_reference_circle(root_comp, sketch, outer_shell_body, inner_shell_body=None):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    profile = get_profile_nearest_point(
+        sketch,
+        create_point_mm(*OUTER_SHELL_REFERENCE_CIRCLE_CENTER_MM),
+    )
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation
+    )
+
+    extrude_input.participantBodies = [current_outer_shell_body]
+
+    distance_value = adsk.core.ValueInput.createByReal(mm_to_cm(40.0))
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        adsk.fusion.ExtentDirections.PositiveExtentDirection,
+    )
+    extrudes.add(extrude_input)
+
+    if moved_inner_shell_body is not None:
+        move_body_by_translation(
+            root_comp,
+            moved_inner_shell_body,
+            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+
+def add_outer_perimeter_reference_circle_fillet(root_comp, outer_shell_body):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    edge = find_arc_edge_near_points_on_xy_plane(
+        current_outer_shell_body,
+        OUTER_SHELL_REFERENCE_CIRCLE_FILLET_REFERENCE_POINTS_MM,
+        0.0,
+    )
+    apply_constant_radius_fillet(
+        root_comp,
+        edge,
+        OUTER_SHELL_REFERENCE_CIRCLE_FILLET_RADIUS_MM,
+    )
+
+
 def extrude_bottom_outer_region(root_comp, sketch):
     profile = get_profile_nearest_point(
         sketch,
@@ -681,6 +1021,117 @@ def apply_constant_radius_fillet(root_comp, edge, radius_mm, tangent_chain=True)
     return fillets.add(fillet_input)
 
 
+def create_lid_inner_split_plane(root_comp, inner_shell_body=None):
+    if inner_shell_body is None:
+        inner_shell_body = helpers.find_body_by_name_or_attribute(root_comp, naming.BODY_INNER_SHELL)
+    lid_slope_face = None
+
+    if inner_shell_body is not None:
+        try:
+            lid_slope_face = find_face_by_named_attribute(
+                inner_shell_body,
+                INNER_SHELL_LID_SLOPE_FACE_NAME,
+            )
+        except RuntimeError:
+            lid_slope_face = None
+
+        if lid_slope_face is None:
+            try:
+                lid_slope_face = find_inner_shell_lid_slope_face(inner_shell_body)
+            except RuntimeError:
+                lid_slope_face = None
+
+        if lid_slope_face is None:
+            try:
+                lid_slope_face = find_best_planar_face_near_reference_points(
+                    inner_shell_body,
+                    INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM,
+                )
+            except RuntimeError:
+                lid_slope_face = None
+
+    if lid_slope_face is None:
+        try:
+            _, lid_slope_face = find_body_face_by_named_attribute(
+                root_comp,
+                INNER_SHELL_LID_SLOPE_FACE_NAME,
+            )
+        except RuntimeError:
+            if inner_shell_body is not None:
+                lid_slope_face = find_best_planar_face_near_reference_points(
+                    inner_shell_body,
+                    INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM,
+                )
+            else:
+                raise
+
+    geometry = adsk.core.Plane.cast(lid_slope_face.geometry)
+    if not geometry:
+        raise RuntimeError('内殻蓋部斜面の平面ジオメトリを取得できませんでした。')
+
+    normal = geometry.normal
+    offset_value_cm = mm_to_cm(OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM)
+    if normal.z > 0.0:
+        offset_value_cm *= -1.0
+
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByOffset(
+        lid_slope_face,
+        adsk.core.ValueInput.createByReal(offset_value_cm),
+    )
+    plane = planes.add(plane_input)
+    plane.name = OUTER_SHELL_LID_INNER_PLANE_NAME
+    helpers.add_named_attribute(plane, OUTER_SHELL_LID_INNER_PLANE_NAME)
+    return plane
+
+
+def split_outer_shell_by_lid_inner_plane(root_comp, outer_shell_body, inner_shell_body=None):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    split_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    split_plane_geometry = adsk.core.Plane.cast(split_plane.geometry)
+    if not split_plane_geometry:
+        raise RuntimeError('外殻分割平面のジオメトリを取得できませんでした。')
+
+    split_features = root_comp.features.splitBodyFeatures
+    split_input = split_features.createInput(
+        current_outer_shell_body,
+        split_plane,
+        True,
+    )
+    split_feature = split_features.add(split_input)
+
+    split_bodies = [split_feature.bodies.item(index) for index in range(split_feature.bodies.count)]
+    if len(split_bodies) < 2:
+        raise RuntimeError('外殻分割後のボディを取得できませんでした。')
+
+    body_distances = [
+        (
+            body,
+            get_signed_distance_to_plane(
+                split_plane_geometry,
+                get_body_bounding_box_center(body),
+            ),
+        )
+        for body in split_bodies
+    ]
+    upper_body, upper_distance = max(body_distances, key=lambda item: item[1])
+    lower_body, lower_distance = min(body_distances, key=lambda item: item[1])
+
+    if upper_distance <= lower_distance:
+        raise RuntimeError('外殻分割後の上下ボディ判定に失敗しました。')
+
+    root_comp.features.removeFeatures.add(upper_body)
+    helpers.set_body_identity(lower_body, naming.BODY_OUTER_SHELL)
+    return lower_body
+
+
 def add_bottom_outer_arc_fillet(root_comp, outer_shell_body):
     edge = find_arc_edge_near_points_on_xy_plane(
         outer_shell_body,
@@ -705,8 +1156,13 @@ def build_outer_shell(root_comp, inner_shell_body, params=None):
 
     sketch = create_outer_shell_sketch(root_comp, inner_shell_body, params)
     outer_shell_body = extrude_outer_shell_profile(root_comp, sketch, inner_shell_body)
+    add_outer_perimeter_face(root_comp, outer_shell_body)
     add_bottom_outer_face(root_comp, outer_shell_body)
+    reference_circle_sketch = create_outer_perimeter_reference_circle_sketch(root_comp)
     bottom_outer_sketch = create_bottom_outer_face_sketch(root_comp, outer_shell_body)
     extrude_bottom_outer_region(root_comp, bottom_outer_sketch)
+    outer_shell_body = split_outer_shell_by_lid_inner_plane(root_comp, outer_shell_body, inner_shell_body)
     add_bottom_outer_arc_fillet(root_comp, outer_shell_body)
+    cut_outer_perimeter_reference_circle(root_comp, reference_circle_sketch, outer_shell_body, inner_shell_body)
+    add_outer_perimeter_reference_circle_fillet(root_comp, outer_shell_body)
     return outer_shell_body
