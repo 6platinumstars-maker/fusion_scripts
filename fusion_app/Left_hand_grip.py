@@ -1515,30 +1515,6 @@ def run(context):
             adsk.fusion.ExtentDirections.NegativeExtentDirection,
             adsk.fusion.FeatureOperations.JoinFeatureOperation
         )
-        inner_shell_lid_slope_face = find_inner_shell_lid_slope_face(inner_shell_outer_body)
-        inner_shell_lid_inner_arc_edge = find_non_linear_edge_near_points(
-            inner_shell_lid_slope_face,
-            [inner_shell_lid_face_result['F'], inner_shell_lid_face_result['G']]
-        )
-        inner_shell_lid_df_edge = find_linear_edge_near_points(
-            inner_shell_lid_slope_face,
-            [inner_shell_lid_face_result['D'], inner_shell_lid_face_result['F']]
-        )
-        inner_shell_lid_cg_edge = find_linear_edge_near_points(
-            inner_shell_lid_slope_face,
-            [inner_shell_lid_face_result['C'], inner_shell_lid_face_result['G']],
-            excluded_tokens={inner_shell_lid_df_edge.entityToken}
-        )
-        apply_constant_radius_fillet_to_edges(
-            root_comp,
-            [
-                inner_shell_lid_inner_arc_edge,
-                inner_shell_lid_df_edge,
-                inner_shell_lid_cg_edge,
-            ],
-            0.2
-        )
-
         top_face = helpers.find_face_by_axis_value(body, 'z', 0.0)
         outer_shell_option2_sketch = create_outer_shell_option2_cut_sketch(root_comp, top_face, helpers)
         outer_shell_option2_profiles = get_profiles_nearest_points(

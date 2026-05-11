@@ -1,7 +1,7 @@
-# Left_hand_grip Outer Shell
+ Left_hand_grip Outer Shell
 
 `fusion_app/outer_shell.py` に対応する、`外殻` の現仕様です。
-
+#
 ## 対象ファイル
 
 - 外殻スクリプト: [fusion_app/outer_shell.py](/home/ps/fusion_scripts/fusion_app/outer_shell.py)

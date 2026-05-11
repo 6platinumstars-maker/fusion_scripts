@@ -43,6 +43,23 @@ OUTER_SHELL_BOTTOM_OUTER_FILLET_REFERENCE_POINTS_MM = (
 INNER_SHELL_LID_SLOPE_FACE_NAME = '内殻蓋部斜面'
 OUTER_SHELL_LID_INNER_PLANE_NAME = '外殻蓋部斜面内部'
 OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM = 0.2
+OUTER_SHELL_BASE_STRUCTURE_SKETCH_NAME = '外殻基準構造'
+OUTER_SHELL_L_BUTTON_OPENING_SKETCH_NAME = '外殻Lボタン開口部'
+OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_START_MM = (-55.748, 35.0, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_END_MM = (-66.477, 27.133, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_LINE_C_MM = (-51.8, 28.218, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_LINE_D_MM = (-66.477, 27.133, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_ENDPOINT_F_MM = (-54.581, 32.455, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_LINE_G_MM = (-51.8, 35.0, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_OFFSET_MM = 2.8
+OUTER_SHELL_L_BUTTON_OPENING_PROFILE_TARGET_MM = (-54.8, 33.4, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_EXTRUDE_DISTANCE_MM = 27.0
+OUTER_SHELL_L_BUTTON_OPENING_FILLET_REFERENCE_POINTS_MM = (
+    (-54.581, 32.455, 0.0),
+    (-60.8, 29.7, 0.0),
+)
+OUTER_SHELL_L_BUTTON_OPENING_FILLET_RADIUS_MM = 6.0
+OUTER_SHELL_L_BUTTON_OPENING_CUT_DISTANCE_MM = 10.0
 INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM = (
     (-63.701, -27.138, 25.8),
     (-62.178, -22.954, 25.452),
@@ -64,6 +81,10 @@ def create_point_mm(x_mm, y_mm, z_mm=0.0):
 
 def create_sketch_point(sketch, point_mm):
     return sketch.sketchPoints.add(create_point_mm(*point_mm))
+
+
+def to_sketch_space(sketch, point_mm):
+    return sketch.modelToSketchSpace(create_point_mm(*point_mm))
 
 
 def get_point_distance(point_a, point_b):
@@ -211,16 +232,36 @@ def find_best_planar_face_near_reference_points(body, reference_points_mm, toler
 
 def get_nearest_distance_to_edge(edge, target_point, sample_count=80):
     evaluator = edge.evaluator
-    success, start_param, end_param = evaluator.getParameterExtents()
+    try:
+        success, start_param, end_param = evaluator.getParameterExtents()
+    except RuntimeError:
+        success = False
+        start_param = None
+        end_param = None
     if not success:
-        raise RuntimeError('辺のパラメータ範囲を取得できませんでした。')
+        start_param = None
+        end_param = None
 
-    parameters = [
-        start_param + ((end_param - start_param) * index / sample_count)
-        for index in range(sample_count + 1)
-    ]
-    success, sampled_points = evaluator.getPointsAtParameters(parameters)
-    if not success:
+    sampled_points = []
+    if start_param is not None and end_param is not None:
+        for index in range(sample_count + 1):
+            parameter = start_param + ((end_param - start_param) * index / sample_count)
+            try:
+                success, point = evaluator.getPointAtParameter(parameter)
+            except RuntimeError:
+                continue
+            if success and point:
+                sampled_points.append(point)
+
+    if not sampled_points:
+        start_vertex = edge.startVertex
+        end_vertex = edge.endVertex
+        if start_vertex and start_vertex.geometry:
+            sampled_points.append(start_vertex.geometry)
+        if end_vertex and end_vertex.geometry:
+            sampled_points.append(end_vertex.geometry)
+
+    if not sampled_points:
         raise RuntimeError('辺上のサンプル点を取得できませんでした。')
 
     return min(get_point_distance(point, target_point) for point in sampled_points)
@@ -317,6 +358,79 @@ def find_largest_xy_face_at_z_covering_point(body, point_mm, tolerance_cm):
         raise RuntimeError('指定条件に一致する上側 XY 面を取得できませんでした。')
 
     return max(candidate_faces, key=lambda face: face.area)
+
+
+def find_largest_xz_face_at_y_covering_point(body, point_mm, tolerance_cm):
+    target_x = mm_to_cm(point_mm[0])
+    target_y = mm_to_cm(point_mm[1])
+    target_z = mm_to_cm(point_mm[2])
+    candidate_faces = []
+
+    for face in get_face_collection(body):
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        normal = geometry.normal
+        if abs(normal.x) > tolerance_cm or abs(normal.y) <= tolerance_cm or abs(normal.z) > tolerance_cm:
+            continue
+
+        box = face.boundingBox
+        if abs(box.minPoint.y - target_y) > tolerance_cm or abs(box.maxPoint.y - target_y) > tolerance_cm:
+            continue
+        if target_x < box.minPoint.x - tolerance_cm or target_x > box.maxPoint.x + tolerance_cm:
+            continue
+        if target_z < box.minPoint.z - tolerance_cm or target_z > box.maxPoint.z + tolerance_cm:
+            continue
+
+        candidate_faces.append(face)
+
+    if not candidate_faces:
+        raise RuntimeError('指定条件に一致する Y 一定の XZ 面を取得できませんでした。')
+
+    return max(candidate_faces, key=lambda face: face.area)
+
+
+def is_linear_edge(edge):
+    return adsk.core.Line3D.cast(edge.geometry) is not None
+
+
+def get_face_edge_nearest_point(face, target_point_mm, excluded_tokens=None, require_non_linear=False):
+    target_point = create_point_mm(*target_point_mm)
+    nearest_edge = None
+    nearest_score = None
+
+    for edge in face.edges:
+        if excluded_tokens and edge.entityToken in excluded_tokens:
+            continue
+        if require_non_linear and is_linear_edge(edge):
+            continue
+
+        try:
+            score = get_nearest_distance_to_edge(edge, target_point)
+        except RuntimeError:
+            continue
+        if nearest_score is None or score < nearest_score:
+            nearest_score = score
+            nearest_edge = edge
+
+    if nearest_edge is None:
+        raise RuntimeError('指定条件に一致する面エッジを取得できませんでした。')
+
+    return nearest_edge
+
+
+def project_face_edges_by_token(sketch, face):
+    projected_by_token = {}
+
+    for edge in face.edges:
+        projected_items = sketch.project(edge)
+        projected_by_token[edge.entityToken] = [
+            projected_items.item(index)
+            for index in range(projected_items.count)
+        ]
+
+    return projected_by_token
 
 
 def find_inner_contact_faces(outer_shell_body, inner_shell_body, tolerance_cm):
@@ -434,6 +548,250 @@ def get_curve_midpoint(sketch_curve):
     return midpoint
 
 
+def get_nearest_distance_to_sketch_curve(sketch_curve, target_point, sample_count=80):
+    geometry = get_curve_geometry(sketch_curve)
+    if not geometry:
+        raise RuntimeError('スケッチカーブのジオメトリを取得できませんでした。')
+
+    evaluator = geometry.evaluator
+    success, start_param, end_param = evaluator.getParameterExtents()
+    if not success:
+        raise RuntimeError('スケッチカーブのパラメータ範囲を取得できませんでした。')
+
+    nearest_distance = None
+    for index in range(sample_count + 1):
+        parameter = start_param + ((end_param - start_param) * index / sample_count)
+        success, point = evaluator.getPointAtParameter(parameter)
+        if not success:
+            continue
+
+        distance = get_point_distance(point, target_point)
+        if nearest_distance is None or distance < nearest_distance:
+            nearest_distance = distance
+
+    if nearest_distance is None:
+        raise RuntimeError('スケッチカーブ上のサンプル点を取得できませんでした。')
+
+    return nearest_distance
+
+
+def get_first_sketch_curve(entities, error_message):
+    for entity in entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(entity)
+        if sketch_curve:
+            return sketch_curve
+    raise RuntimeError(error_message)
+
+
+def to_entity_list(entities):
+    if entities is None:
+        return []
+
+    count = getattr(entities, 'count', None)
+    if isinstance(count, int):
+        return [entities.item(index) for index in range(count)]
+
+    if callable(count):
+        entity_count = count()
+        return [entities.item(index) for index in range(entity_count)]
+
+    try:
+        return list(entities)
+    except TypeError:
+        raise RuntimeError('スケッチエンティティ集合を走査できませんでした。')
+
+
+def get_first_sketch_line(entities, error_message):
+    for entity in entities:
+        sketch_line = adsk.fusion.SketchLine.cast(entity)
+        if sketch_line:
+            return sketch_line
+    raise RuntimeError(error_message)
+
+
+def get_curve_endpoint_nearest_point(sketch_curve, target_point):
+    start_point = sketch_curve.startSketchPoint.geometry
+    end_point = sketch_curve.endSketchPoint.geometry
+    start_distance = get_point_distance(start_point, target_point)
+    end_distance = get_point_distance(end_point, target_point)
+    if start_distance <= end_distance:
+        return start_point
+    return end_point
+
+
+def get_curve_endpoint_sketch_point_nearest_point(sketch_curve, target_point):
+    start_point = sketch_curve.startSketchPoint.geometry
+    end_point = sketch_curve.endSketchPoint.geometry
+    start_distance = get_point_distance(start_point, target_point)
+    end_distance = get_point_distance(end_point, target_point)
+    if start_distance <= end_distance:
+        return sketch_curve.startSketchPoint
+    return sketch_curve.endSketchPoint
+
+
+def get_curve_other_endpoint(sketch_curve, target_point):
+    start_point = sketch_curve.startSketchPoint.geometry
+    end_point = sketch_curve.endSketchPoint.geometry
+    start_distance = get_point_distance(start_point, target_point)
+    end_distance = get_point_distance(end_point, target_point)
+    if start_distance <= end_distance:
+        return end_point
+    return start_point
+
+
+def get_midpoint_mm(point_a_mm, point_b_mm):
+    return tuple(
+        (value_a + value_b) / 2.0
+        for value_a, value_b in zip(point_a_mm, point_b_mm)
+    )
+
+
+def get_xy_cross_value(point, line_start_mm, line_end_mm):
+    start_x = mm_to_cm(line_start_mm[0])
+    start_y = mm_to_cm(line_start_mm[1])
+    end_x = mm_to_cm(line_end_mm[0])
+    end_y = mm_to_cm(line_end_mm[1])
+    return (
+        ((end_x - start_x) * (point.y - start_y))
+        - ((end_y - start_y) * (point.x - start_x))
+    )
+
+
+def is_point_within_xy_line_segment(point, line_start_mm, line_end_mm, tolerance_cm=1e-5):
+    min_x = mm_to_cm(min(line_start_mm[0], line_end_mm[0])) - tolerance_cm
+    max_x = mm_to_cm(max(line_start_mm[0], line_end_mm[0])) + tolerance_cm
+    min_y = mm_to_cm(min(line_start_mm[1], line_end_mm[1])) - tolerance_cm
+    max_y = mm_to_cm(max(line_start_mm[1], line_end_mm[1])) + tolerance_cm
+    return min_x <= point.x <= max_x and min_y <= point.y <= max_y
+
+
+def find_curve_line_intersection_point(
+    sketch_curve,
+    line_start_mm,
+    line_end_mm,
+    sample_count=200,
+    refinement_steps=30,
+):
+    geometry = get_curve_geometry(sketch_curve)
+    if not geometry:
+        raise RuntimeError('交点探索対象のスケッチカーブジオメトリを取得できませんでした。')
+
+    evaluator = geometry.evaluator
+    success, start_param, end_param = evaluator.getParameterExtents()
+    if not success:
+        raise RuntimeError('交点探索対象のスケッチカーブのパラメータ範囲を取得できませんでした。')
+
+    previous_param = None
+    previous_point = None
+    previous_cross = None
+    nearest_point = None
+    nearest_score = None
+
+    for index in range(sample_count + 1):
+        parameter = start_param + ((end_param - start_param) * index / sample_count)
+        success, point = evaluator.getPointAtParameter(parameter)
+        if not success:
+            continue
+
+        cross_value = get_xy_cross_value(point, line_start_mm, line_end_mm)
+        score = abs(cross_value)
+        if not is_point_within_xy_line_segment(point, line_start_mm, line_end_mm):
+            score += 1.0
+        if nearest_score is None or score < nearest_score:
+            nearest_score = score
+            nearest_point = point
+
+        if abs(cross_value) <= 1e-6 and is_point_within_xy_line_segment(point, line_start_mm, line_end_mm):
+            return point
+
+        if (
+            previous_point is not None
+            and is_point_within_xy_line_segment(point, line_start_mm, line_end_mm)
+            and is_point_within_xy_line_segment(previous_point, line_start_mm, line_end_mm)
+            and previous_cross is not None
+            and (cross_value == 0.0 or previous_cross == 0.0 or (cross_value > 0.0) != (previous_cross > 0.0))
+        ):
+            lower_param = previous_param
+            upper_param = parameter
+            lower_cross = previous_cross
+            upper_cross = cross_value
+            lower_point = previous_point
+            upper_point = point
+
+            for _ in range(refinement_steps):
+                middle_param = (lower_param + upper_param) / 2.0
+                success, middle_point = evaluator.getPointAtParameter(middle_param)
+                if not success:
+                    break
+
+                middle_cross = get_xy_cross_value(middle_point, line_start_mm, line_end_mm)
+                if abs(middle_cross) <= 1e-6 and is_point_within_xy_line_segment(middle_point, line_start_mm, line_end_mm):
+                    return middle_point
+
+                if (middle_cross > 0.0) == (lower_cross > 0.0):
+                    lower_param = middle_param
+                    lower_cross = middle_cross
+                    lower_point = middle_point
+                else:
+                    upper_param = middle_param
+                    upper_cross = middle_cross
+                    upper_point = middle_point
+
+            return adsk.core.Point3D.create(
+                (lower_point.x + upper_point.x) / 2.0,
+                (lower_point.y + upper_point.y) / 2.0,
+                (lower_point.z + upper_point.z) / 2.0,
+            )
+
+        previous_param = parameter
+        previous_point = point
+        previous_cross = cross_value
+
+    if nearest_point is None:
+        raise RuntimeError('オフセット曲線と基準直線の近傍点を取得できませんでした。')
+
+    return nearest_point
+
+
+def find_non_linear_sketch_curve_near_point(sketch_curves, target_point):
+    nearest_curve = None
+    nearest_score = None
+
+    for sketch_curve in sketch_curves:
+        if adsk.fusion.SketchLine.cast(sketch_curve):
+            continue
+
+        try:
+            score = get_nearest_distance_to_sketch_curve(sketch_curve, target_point)
+        except RuntimeError:
+            continue
+
+        if nearest_score is None or score < nearest_score:
+            nearest_score = score
+            nearest_curve = sketch_curve
+
+    if nearest_curve is None:
+        raise RuntimeError('指定条件に一致する非線形スケッチカーブを取得できませんでした。')
+
+    return nearest_curve
+
+
+def find_face_boundary_point_in_positive_x(face, model_point, tolerance_cm, iterations=40):
+    box = face.boundingBox
+    low_x = model_point.x
+    high_x = box.maxPoint.x
+
+    for _ in range(iterations):
+        mid_x = (low_x + high_x) / 2.0
+        candidate = adsk.core.Point3D.create(mid_x, model_point.y, model_point.z)
+        if face.isPointOnFace(candidate, tolerance_cm):
+            low_x = mid_x
+        else:
+            high_x = mid_x
+
+    return adsk.core.Point3D.create(low_x, model_point.y, model_point.z)
+
+
 def clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve):
     lines = sketch.sketchCurves.sketchLines
     arcs = sketch.sketchCurves.sketchArcs
@@ -442,40 +800,36 @@ def clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve):
 
     sketch_line = adsk.fusion.SketchLine.cast(sketch_curve)
     if sketch_line:
-        lines.addByTwoPoints(
+        return lines.addByTwoPoints(
             sketch_line.startSketchPoint.geometry,
             sketch_line.endSketchPoint.geometry,
         )
-        return
 
     sketch_arc = adsk.fusion.SketchArc.cast(sketch_curve)
     if sketch_arc:
-        arcs.addByThreePoints(
+        return arcs.addByThreePoints(
             sketch_arc.startSketchPoint.geometry,
             get_curve_midpoint(sketch_arc),
             sketch_arc.endSketchPoint.geometry,
         )
-        return
 
     sketch_circle = adsk.fusion.SketchCircle.cast(sketch_curve)
     if sketch_circle:
         geometry = adsk.core.Circle3D.cast(get_curve_geometry(sketch_circle))
         if not geometry:
             raise RuntimeError('断面円のジオメトリを取得できませんでした。')
-        circles.addByCenterRadius(geometry.center, geometry.radius)
-        return
+        return circles.addByCenterRadius(geometry.center, geometry.radius)
 
     sketch_ellipse = adsk.fusion.SketchEllipse.cast(sketch_curve)
     if sketch_ellipse:
         geometry = adsk.core.Ellipse3D.cast(get_curve_geometry(sketch_ellipse))
         if not geometry:
             raise RuntimeError('断面楕円のジオメトリを取得できませんでした。')
-        sketch.sketchCurves.sketchEllipses.add(
+        return sketch.sketchCurves.sketchEllipses.add(
             geometry.center,
             geometry.majorAxis,
             geometry.pointOnEllipse,
         )
-        return
 
     sketch_spline = adsk.fusion.SketchFittedSpline.cast(sketch_curve)
     if sketch_spline:
@@ -493,8 +847,7 @@ def clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve):
             if not success:
                 raise RuntimeError('断面スプラインのサンプル点を取得できませんでした。')
             fit_points.add(point)
-        splines.add(fit_points)
-        return
+        return splines.add(fit_points)
 
     raise RuntimeError('未対応の断面カーブ種類です。')
 
@@ -534,6 +887,40 @@ def get_profile_nearest_point(sketch, target_point):
         raise RuntimeError('外殻の押し出しプロファイルを取得できませんでした。')
 
     return nearest_profile
+
+
+def get_smallest_profile(sketch):
+    smallest_profile = None
+    smallest_area = None
+
+    for index in range(sketch.profiles.count):
+        profile = sketch.profiles.item(index)
+        area = profile.areaProperties().area
+        if smallest_area is None or area < smallest_area:
+            smallest_area = area
+            smallest_profile = profile
+
+    if not smallest_profile:
+        raise RuntimeError('最小プロファイルを取得できませんでした。')
+
+    return smallest_profile
+
+
+def get_largest_profile(sketch):
+    largest_profile = None
+    largest_area = None
+
+    for index in range(sketch.profiles.count):
+        profile = sketch.profiles.item(index)
+        area = profile.areaProperties().area
+        if largest_area is None or area > largest_area:
+            largest_area = area
+            largest_profile = profile
+
+    if not largest_profile:
+        raise RuntimeError('最大プロファイルを取得できませんでした。')
+
+    return largest_profile
 
 
 def line_y_at_x(point_a_mm, point_b_mm, target_x_mm):
@@ -591,6 +978,33 @@ def offset_point_from_circle(center_mm, point_mm, offset_mm):
     return (
         cx_mm + (vector_x_mm * scale),
         cy_mm + (vector_y_mm * scale),
+    )
+
+
+def offset_line_on_xz_plane(point_a_mm, point_b_mm, offset_mm):
+    ax_mm, _, az_mm = point_a_mm
+    bx_mm, _, bz_mm = point_b_mm
+
+    direction_x_mm = bx_mm - ax_mm
+    direction_z_mm = bz_mm - az_mm
+    direction_length_mm = math.hypot(direction_x_mm, direction_z_mm)
+    if direction_length_mm <= 1e-9:
+        raise RuntimeError('同一点からはオフセット線を作成できません。')
+
+    normal_x_mm = -direction_z_mm / direction_length_mm
+    normal_z_mm = direction_x_mm / direction_length_mm
+
+    return (
+        (
+            ax_mm + (normal_x_mm * offset_mm),
+            point_a_mm[1],
+            az_mm + (normal_z_mm * offset_mm),
+        ),
+        (
+            bx_mm + (normal_x_mm * offset_mm),
+            point_b_mm[1],
+            bz_mm + (normal_z_mm * offset_mm),
+        ),
     )
 
 
@@ -674,7 +1088,7 @@ def build_outer_shell_reference_points(params):
 
 def create_outer_shell_sketch(root_comp, inner_shell_body, params):
     sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
-    sketch.name = '外殻'
+    sketch.name = OUTER_SHELL_BASE_STRUCTURE_SKETCH_NAME
 
     points = build_outer_shell_reference_points(params)
     lines = sketch.sketchCurves.sketchLines
@@ -998,7 +1412,10 @@ def find_arc_edge_near_points_on_xy_plane(body, reference_points_mm, z_value_mm,
         if abs(normal.x) > tolerance_cm or abs(normal.y) > tolerance_cm:
             continue
 
-        score = sum(get_nearest_distance_to_edge(edge, point) for point in target_points)
+        try:
+            score = sum(get_nearest_distance_to_edge(edge, point) for point in target_points)
+        except RuntimeError:
+            continue
         if candidate_score is None or score < candidate_score:
             candidate_score = score
             candidate_edge = edge
@@ -1145,11 +1562,217 @@ def add_bottom_outer_arc_fillet(root_comp, outer_shell_body):
     )
 
 
-def build_outer_shell(root_comp, inner_shell_body, params=None):
+def cut_profile_in_negative_y(root_comp, face, profile, outer_shell_body, inner_shell_body=None):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    geometry = adsk.core.Plane.cast(face.geometry)
+    if not geometry:
+        raise RuntimeError('開口部カット対象面の平面ジオメトリを取得できませんでした。')
+
+    normal = geometry.normal
+    direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if normal.y > 0.0:
+        direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(OUTER_SHELL_L_BUTTON_OPENING_CUT_DISTANCE_MM)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+    if moved_inner_shell_body is not None:
+        move_body_by_translation(
+            root_comp,
+            moved_inner_shell_body,
+            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+
+def create_outer_shell_l_button_opening_sketch(root_comp, outer_shell_body):
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = OUTER_SHELL_L_BUTTON_OPENING_SKETCH_NAME
+    projected_entities = to_entity_list(sketch.intersectWithSketchPlane([outer_shell_body]))
+    projected_curves = [
+        adsk.fusion.SketchCurve.cast(entity)
+        for entity in projected_entities
+        if adsk.fusion.SketchCurve.cast(entity)
+    ]
+
+    target_point = create_point_mm(
+        *get_midpoint_mm(
+            OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_START_MM,
+            OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_END_MM,
+        )
+    )
+    curve = find_non_linear_sketch_curve_near_point(projected_curves, target_point)
+    visible_reference_curve = clone_intersection_curve_as_sketch_geometry(sketch, curve)
+
+    for projected_curve in projected_curves:
+        projected_curve.deleteMe()
+
+    point_a_reference = to_sketch_space(sketch, OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_START_MM)
+    point_d_reference = to_sketch_space(sketch, OUTER_SHELL_L_BUTTON_OPENING_LINE_D_MM)
+    curve_point_a = get_curve_endpoint_sketch_point_nearest_point(
+        visible_reference_curve,
+        point_a_reference,
+    )
+    curve_point_d = get_curve_endpoint_sketch_point_nearest_point(
+        visible_reference_curve,
+        point_d_reference,
+    )
+
+    lines = sketch.sketchCurves.sketchLines
+    point_c = sketch.sketchPoints.add(create_point_mm(*OUTER_SHELL_L_BUTTON_OPENING_LINE_C_MM))
+    point_g = sketch.sketchPoints.add(create_point_mm(*OUTER_SHELL_L_BUTTON_OPENING_LINE_G_MM))
+    lines.addByTwoPoints(
+        point_c,
+        curve_point_d,
+    )
+    lines.addByTwoPoints(
+        point_c,
+        point_g,
+    )
+    lines.addByTwoPoints(
+        curve_point_a,
+        point_g,
+    )
+
+    outer_curve_collection = adsk.core.ObjectCollection.create()
+    outer_curve_collection.add(visible_reference_curve)
+
+    offset_entities = sketch.offset(
+        outer_curve_collection,
+        to_sketch_space(sketch, OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_START_MM),
+        mm_to_cm(-OUTER_SHELL_L_BUTTON_OPENING_OFFSET_MM),
+    )
+    offset_entities = to_entity_list(offset_entities)
+    offset_curve = get_first_sketch_curve(
+        [
+            entity
+            for entity in offset_entities
+            if adsk.fusion.SketchCurve.cast(entity)
+        ],
+        '開口部オフセット曲線の作成に失敗しました。',
+    )
+
+    point_e_geometry = find_curve_line_intersection_point(
+        offset_curve,
+        OUTER_SHELL_L_BUTTON_OPENING_LINE_C_MM,
+        OUTER_SHELL_L_BUTTON_OPENING_LINE_D_MM,
+    )
+    point_e = sketch.sketchPoints.add(point_e_geometry)
+    sketch.geometricConstraints.addCoincident(point_e, offset_curve)
+
+    endpoint_f = get_curve_endpoint_nearest_point(
+        offset_curve,
+        to_sketch_space(sketch, OUTER_SHELL_L_BUTTON_OPENING_ENDPOINT_F_MM),
+    )
+    point_h_geometry = create_point_mm(
+        OUTER_SHELL_L_BUTTON_OPENING_LINE_C_MM[0],
+        endpoint_f.y * 10.0,
+        0.0,
+    )
+    point_h = sketch.sketchPoints.add(point_h_geometry)
+
+    line_b_to_e = lines.addByTwoPoints(
+        curve_point_d,
+        point_e,
+    )
+    line_c_to_h = lines.addByTwoPoints(
+        point_c,
+        point_h,
+    )
+    line_f_to_h = lines.addByTwoPoints(
+        endpoint_f,
+        point_h,
+    )
+
+    return {
+        'sketch': sketch,
+        'face': None,
+    }
+
+
+def extrude_outer_shell_l_button_opening_region(root_comp, outer_shell_body, sketch):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+
+    profile = get_largest_profile(sketch)
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    extrude_input.participantBodies = [outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(OUTER_SHELL_L_BUTTON_OPENING_EXTRUDE_DISTANCE_MM)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        adsk.fusion.ExtentDirections.PositiveExtentDirection,
+    )
+    extrudes.add(extrude_input)
+
+
+def add_outer_shell_l_button_opening_offset_fillet(root_comp, outer_shell_body):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    edge = find_arc_edge_near_points_on_xy_plane(
+        current_outer_shell_body,
+        OUTER_SHELL_L_BUTTON_OPENING_FILLET_REFERENCE_POINTS_MM,
+        0.0,
+    )
+    apply_constant_radius_fillet(
+        root_comp,
+        edge,
+        OUTER_SHELL_L_BUTTON_OPENING_FILLET_RADIUS_MM,
+    )
+
+
+def build_outer_shell_base_structure(root_comp, inner_shell_body, params=None):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if inner_shell_body is None:
-        raise RuntimeError('inner_shell_body is required to build the outer shell.')
+        raise RuntimeError('inner_shell_body is required to build the outer shell base structure.')
 
     if params is None:
         params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
@@ -1162,7 +1785,39 @@ def build_outer_shell(root_comp, inner_shell_body, params=None):
     bottom_outer_sketch = create_bottom_outer_face_sketch(root_comp, outer_shell_body)
     extrude_bottom_outer_region(root_comp, bottom_outer_sketch)
     outer_shell_body = split_outer_shell_by_lid_inner_plane(root_comp, outer_shell_body, inner_shell_body)
-    add_bottom_outer_arc_fillet(root_comp, outer_shell_body)
     cut_outer_perimeter_reference_circle(root_comp, reference_circle_sketch, outer_shell_body, inner_shell_body)
-    add_outer_perimeter_reference_circle_fillet(root_comp, outer_shell_body)
     return outer_shell_body
+
+
+def add_structures_to_outer_shell_base_structure(
+    root_comp,
+    outer_shell_base_structure_body,
+    inner_shell_body,
+    params=None,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_base_structure_body is None:
+        raise RuntimeError('outer_shell_base_structure_body is required.')
+
+    _ = inner_shell_body
+    _ = params
+    create_outer_shell_l_button_opening_sketch(
+        root_comp,
+        outer_shell_base_structure_body,
+    )
+    return outer_shell_base_structure_body
+
+
+def build_outer_shell(root_comp, inner_shell_body, params=None):
+    outer_shell_base_structure_body = build_outer_shell_base_structure(
+        root_comp,
+        inner_shell_body,
+        params,
+    )
+    return add_structures_to_outer_shell_base_structure(
+        root_comp,
+        outer_shell_base_structure_body,
+        inner_shell_body,
+        params,
+    )
