@@ -42,10 +42,49 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         outer_shell_body,
         opening_data['sketch'],
     )
+    end_cut_data = outer_shell.create_outer_shell_end_cut_sketch(
+        root_comp,
+        outer_shell_body,
+    )
+    outer_shell.cut_outer_shell_end_region(
+        root_comp,
+        outer_shell_body,
+        end_cut_data['sketch'],
+        end_cut_data['face'],
+    )
+    outer_shell.add_outer_shell_l_button_opening_offset_fillet(
+        root_comp,
+        outer_shell_body,
+    )
     outer_shell_body = outer_shell.split_outer_shell_by_lid_inner_plane(
         root_comp,
         outer_shell_body,
         inner_shell_body,
+    )
+    opening_base_data = outer_shell.create_outer_shell_l_button_opening_base_structure_sketch(
+        root_comp,
+        outer_shell_body,
+    )
+    outer_shell.cut_outer_shell_l_button_opening_base_structure_region(
+        root_comp,
+        outer_shell_body,
+        inner_shell_body,
+        opening_base_data['sketch'],
+        opening_base_data['face'],
+    )
+    outer_shell.add_outer_shell_l_button_opening_base_structure_fillets(
+        root_comp,
+        outer_shell_body,
+    )
+    slope_cut_data = outer_shell.create_outer_shell_l_button_opening_slope_cut_sketch(
+        root_comp,
+        outer_shell_body,
+    )
+    outer_shell.cut_outer_shell_l_button_opening_slope_region(
+        root_comp,
+        outer_shell_body,
+        slope_cut_data['sketch'],
+        slope_cut_data['face'],
     )
     grip_body = grip.build_grip(
         root_comp,
