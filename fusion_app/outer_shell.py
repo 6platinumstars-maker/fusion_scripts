@@ -79,6 +79,16 @@ OUTER_SHELL_L_BUTTON_OPENING_BASE_FILLET_AXIS_1_POINT_MM = OUTER_SHELL_L_BUTTON_
 OUTER_SHELL_L_BUTTON_OPENING_BASE_FILLET_AXIS_1_RADIUS_MM = 15.0
 OUTER_SHELL_L_BUTTON_OPENING_BASE_FILLET_AXIS_2_POINT_MM = OUTER_SHELL_L_BUTTON_OPENING_BASE_CORNER_I_MM
 OUTER_SHELL_L_BUTTON_OPENING_BASE_FILLET_AXIS_2_RADIUS_MM = 4.0
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_SKETCH_NAME = '外殻Lボタン開口部内部仕様'
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_PLANE_NAME = '外殻Lボタン開口部内部仕様平面'
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_PLANE_X_MM = -59.8
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_A_MM = (-59.8, 27.311, 24.969)
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_B_MM = (-59.8, 32.0, 16.654)
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_C_MM = (-59.8, 32.0, 11.902)
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_D_MM = (-59.8, 27.311, -0.69)
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_E_MM = (-59.8, 31.218, 20.473)
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_F_MM = (-59.8, 30.747, 4.392)
+OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_PROFILE_TARGET_MM = (-59.8, 30.2, 12.0)
 OUTER_SHELL_L_BUTTON_OPENING_SLOPE_CUT_SKETCH_NAME = '外殻Lボタン開口部斜面切り取り'
 OUTER_SHELL_L_BUTTON_OPENING_SLOPE_CUT_POINT_O_MM = (-66.765, 27.112, 26.2)
 OUTER_SHELL_L_BUTTON_OPENING_SLOPE_CUT_POINT_P_MM = (-48.687, 28.653, -3.2)
@@ -1087,6 +1097,147 @@ def get_profile_nearest_point(sketch, target_point):
         raise RuntimeError('外殻の押し出しプロファイルを取得できませんでした。')
 
     return nearest_profile
+
+
+def is_sketch_point_within_profile_bounding_box(profile, target_point, tolerance_cm=1e-6):
+    box = profile.boundingBox
+    return (
+        (box.minPoint.x - tolerance_cm) <= target_point.x <= (box.maxPoint.x + tolerance_cm)
+        and (box.minPoint.y - tolerance_cm) <= target_point.y <= (box.maxPoint.y + tolerance_cm)
+    )
+
+
+def sample_sketch_curve_points_in_sketch_space(sketch_curve, sample_count=40):
+    geometry = getattr(sketch_curve, 'geometry', None)
+    if not geometry:
+        geometry = get_curve_geometry(sketch_curve)
+    if not geometry:
+        raise RuntimeError('スケッチカーブのジオメトリを取得できませんでした。')
+
+    evaluator = geometry.evaluator
+    success, start_param, end_param = evaluator.getParameterExtents()
+    if not success:
+        raise RuntimeError('スケッチカーブのパラメータ範囲を取得できませんでした。')
+
+    points = []
+    for index in range(sample_count + 1):
+        parameter = start_param + ((end_param - start_param) * index / sample_count)
+        success, point = evaluator.getPointAtParameter(parameter)
+        if success:
+            points.append(point)
+
+    if len(points) < 2:
+        raise RuntimeError('スケッチカーブ上のサンプル点を取得できませんでした。')
+
+    return points
+
+
+def build_profile_loop_polyline(profile_loop, sample_count=40):
+    polyline = []
+
+    for curve_index in range(profile_loop.profileCurves.count):
+        profile_curve = profile_loop.profileCurves.item(curve_index)
+        sketch_curve = adsk.fusion.SketchCurve.cast(profile_curve.sketchEntity)
+        if not sketch_curve:
+            continue
+
+        curve_points = sample_sketch_curve_points_in_sketch_space(
+            sketch_curve,
+            sample_count=sample_count,
+        )
+        if polyline:
+            last_point = polyline[-1]
+            forward_distance = get_point_distance(last_point, curve_points[0])
+            reverse_distance = get_point_distance(last_point, curve_points[-1])
+            if reverse_distance < forward_distance:
+                curve_points.reverse()
+            polyline.extend(curve_points[1:])
+        else:
+            polyline.extend(curve_points)
+
+    if len(polyline) < 3:
+        raise RuntimeError('プロファイルループのポリライン化に失敗しました。')
+
+    if get_point_distance(polyline[0], polyline[-1]) > 1e-5:
+        polyline.append(polyline[0])
+
+    return polyline
+
+
+def is_point_inside_polyline(target_point, polyline, tolerance_cm=1e-6):
+    inside = False
+    target_x = target_point.x
+    target_y = target_point.y
+
+    for index in range(len(polyline) - 1):
+        point_a = polyline[index]
+        point_b = polyline[index + 1]
+
+        min_x = min(point_a.x, point_b.x) - tolerance_cm
+        max_x = max(point_a.x, point_b.x) + tolerance_cm
+        min_y = min(point_a.y, point_b.y) - tolerance_cm
+        max_y = max(point_a.y, point_b.y) + tolerance_cm
+        cross_value = (
+            ((point_b.x - point_a.x) * (target_y - point_a.y))
+            - ((point_b.y - point_a.y) * (target_x - point_a.x))
+        )
+        if abs(cross_value) <= tolerance_cm and min_x <= target_x <= max_x and min_y <= target_y <= max_y:
+            return True
+
+        intersects = ((point_a.y > target_y) != (point_b.y > target_y))
+        if not intersects:
+            continue
+
+        x_at_target_y = point_a.x + (
+            ((target_y - point_a.y) * (point_b.x - point_a.x))
+            / (point_b.y - point_a.y)
+        )
+        if x_at_target_y >= target_x - tolerance_cm:
+            inside = not inside
+
+    return inside
+
+
+def does_profile_contain_point(profile, target_point):
+    if not is_sketch_point_within_profile_bounding_box(profile, target_point):
+        return False
+
+    inside_outer_loop = False
+
+    for loop_index in range(profile.profileLoops.count):
+        profile_loop = profile.profileLoops.item(loop_index)
+        polyline = build_profile_loop_polyline(profile_loop)
+        if not is_point_inside_polyline(target_point, polyline):
+            continue
+        if profile_loop.isOuter:
+            inside_outer_loop = True
+        else:
+            return False
+
+    return inside_outer_loop
+
+
+def get_profile_containing_point(sketch, target_point):
+    containing_profiles = []
+
+    for index in range(sketch.profiles.count):
+        profile = sketch.profiles.item(index)
+        try:
+            if does_profile_contain_point(profile, target_point):
+                containing_profiles.append(profile)
+        except RuntimeError:
+            continue
+
+    if not containing_profiles:
+        raise RuntimeError('指定点を含むプロファイルを取得できませんでした。')
+
+    if len(containing_profiles) == 1:
+        return containing_profiles[0]
+
+    return min(
+        containing_profiles,
+        key=lambda profile: profile.areaProperties().area,
+    )
 
 
 def get_smallest_profile(sketch):
@@ -2241,6 +2392,119 @@ def create_outer_shell_l_button_opening_slope_cut_sketch(root_comp, outer_shell_
     }
 
 
+def create_outer_shell_l_button_opening_inner_spec_sketch(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    plane = create_offset_plane_from_yz(
+        root_comp,
+        OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_PLANE_X_MM,
+        name=OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_PLANE_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_SKETCH_NAME
+    projected_entities = to_entity_list(sketch.intersectWithSketchPlane([outer_shell_body]))
+    for projected_entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(projected_entity)
+        if sketch_curve:
+            sketch_curve.isConstruction = True
+
+    sketch_points = {}
+    for name, point_mm in (
+        ('A', OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_A_MM),
+        ('B', OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_B_MM),
+        ('C', OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_C_MM),
+        ('D', OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_D_MM),
+        ('E', OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_E_MM),
+        ('F', OUTER_SHELL_L_BUTTON_OPENING_INNER_SPEC_POINT_F_MM),
+    ):
+        sketch_points[name] = sketch.sketchPoints.add(
+            to_sketch_space(sketch, point_mm)
+        )
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+    axis_line = lines.addByTwoPoints(sketch_points['A'], sketch_points['D'])
+    lines.addByTwoPoints(sketch_points['B'], sketch_points['C'])
+    arcs.addByThreePoints(
+        sketch_points['A'].geometry,
+        sketch_points['E'].geometry,
+        sketch_points['B'].geometry,
+    )
+    arcs.addByThreePoints(
+        sketch_points['C'].geometry,
+        sketch_points['F'].geometry,
+        sketch_points['D'].geometry,
+    )
+
+    return {
+        'sketch': sketch,
+        'plane': plane,
+        'axis_line': axis_line,
+    }
+
+
+def cut_outer_shell_l_button_opening_inner_spec_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    axis_line,
+    inner_shell_body=None,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if axis_line is None:
+        raise RuntimeError('axis_line is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    profile = get_largest_profile(sketch)
+
+    revolves = root_comp.features.revolveFeatures
+    revolve_input = revolves.createInput(
+        profile,
+        axis_line,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    revolve_input.participantBodies = [current_outer_shell_body]
+    angle_value = adsk.core.ValueInput.createByString('360 deg')
+    revolve_input.setAngleExtent(False, angle_value)
+    revolves.add(revolve_input)
+
+    if moved_inner_shell_body is not None:
+        move_body_by_translation(
+            root_comp,
+            moved_inner_shell_body,
+            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+
 def cut_outer_shell_l_button_opening_slope_region(
     root_comp,
     outer_shell_body,
@@ -2454,6 +2718,17 @@ def add_structures_to_outer_shell_base_structure(
         current_outer_shell_body,
         slope_cut_data['sketch'],
         slope_cut_data['face'],
+    )
+    inner_spec_data = create_outer_shell_l_button_opening_inner_spec_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    cut_outer_shell_l_button_opening_inner_spec_region(
+        root_comp,
+        current_outer_shell_body,
+        inner_spec_data['sketch'],
+        inner_spec_data['axis_line'],
+        inner_shell_body=inner_shell_body,
     )
     return current_outer_shell_body
 

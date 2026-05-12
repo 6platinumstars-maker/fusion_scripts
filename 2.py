@@ -52,6 +52,16 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         end_cut_data['sketch'],
         end_cut_data['face'],
     )
+    side_extension_data = outer_shell.create_outer_shell_side_extension_sketch(
+        root_comp,
+        outer_shell_body,
+    )
+    outer_shell.extrude_outer_shell_side_extension_region(
+        root_comp,
+        outer_shell_body,
+        side_extension_data['sketch'],
+        side_extension_data['face'],
+    )
     outer_shell.add_outer_shell_l_button_opening_offset_fillet(
         root_comp,
         outer_shell_body,
@@ -85,6 +95,17 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         outer_shell_body,
         slope_cut_data['sketch'],
         slope_cut_data['face'],
+    )
+    inner_spec_data = outer_shell.create_outer_shell_l_button_opening_inner_spec_sketch(
+        root_comp,
+        outer_shell_body,
+    )
+    outer_shell.cut_outer_shell_l_button_opening_inner_spec_region(
+        root_comp,
+        outer_shell_body,
+        inner_spec_data['sketch'],
+        inner_spec_data['axis_line'],
+        inner_shell_body=inner_shell_body,
     )
     grip_body = grip.build_grip(
         root_comp,
