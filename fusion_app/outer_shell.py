@@ -46,6 +46,22 @@ OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM = 0.2
 OUTER_SHELL_LID_INNER_PLANE_EXTRUDE_SKETCH_NAME = '外殻蓋部斜面内部押し出し'
 OUTER_SHELL_LID_INNER_PLANE_EXTRUDE_PATH_SKETCH_NAME = '外殻蓋部斜面内部押し出しパス'
 OUTER_SHELL_LID_INNER_PLANE_EXTRUDE_DISTANCE_MM = 0.2
+OUTER_SHELL_LID_GAP_PLANE_NAME = '外殻蓋部斜面隙間部'
+OUTER_SHELL_LID_GAP_PLANE_Z_OFFSET_MM = 0.2
+OUTER_SHELL_LID_GAP_SKETCH_NAME = '外殻蓋部斜面隙間部'
+OUTER_SHELL_LID_GAP_EXTRUDE_DISTANCE_MM = 3.0
+OUTER_SHELL_LID_GAP_EXTENSION_EXTRUDE_DISTANCE_MM = 5.0
+OUTER_SHELL_LID_OUTER_SLOPE_FACE_NAME = '外殻蓋部斜面外側'
+OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM = 3.4
+OUTER_SHELL_LID_GAP_POINT_A_MM = (-90.0, 32.2, 26.621)
+OUTER_SHELL_LID_GAP_POINT_B_MM = (-90.0, -35.0, 21.037)
+OUTER_SHELL_LID_GAP_POINT_C_MM = (-29.854, -35.0, 21.037)
+OUTER_SHELL_LID_GAP_POINT_D_MM = (-29.854, -25.9, 21.793)
+OUTER_SHELL_LID_GAP_POINT_E_MM = (-28.579, -22.977, 22.036)
+OUTER_SHELL_LID_GAP_POINT_F_MM = (-57.8, 32.2, 26.621)
+OUTER_SHELL_LID_GAP_POINT_G_MM = (-63.701, 27.105, 26.198)
+OUTER_SHELL_LID_GAP_POINT_H_MM = (-68.784, 20.286, 25.631)
+OUTER_SHELL_LID_GAP_POINT_I_MM = (-41.943, 5.298, 24.386)
 OUTER_SHELL_LID_YZ_CUT_PLANE_NAME = '外殻蓋部YZ切り取り平面'
 OUTER_SHELL_LID_YZ_CUT_PLANE_X_MM = -29.854
 OUTER_SHELL_BASE_STRUCTURE_SKETCH_NAME = '外殻基準構造'
@@ -1403,6 +1419,60 @@ def get_distance_2d_mm(point_a_mm, point_b_mm):
     )
 
 
+def normalize_vector_2d_mm(vector_x_mm, vector_y_mm):
+    length_mm = math.hypot(vector_x_mm, vector_y_mm)
+    if length_mm <= 1e-9:
+        raise RuntimeError('2D ベクトルを正規化できませんでした。')
+    return (
+        vector_x_mm / length_mm,
+        vector_y_mm / length_mm,
+    )
+
+
+def scale_vector_2d_mm(vector_mm, scale):
+    return (
+        vector_mm[0] * scale,
+        vector_mm[1] * scale,
+    )
+
+
+def add_vector_2d_mm(point_mm, vector_mm):
+    return (
+        point_mm[0] + vector_mm[0],
+        point_mm[1] + vector_mm[1],
+    )
+
+
+def subtract_points_2d_mm(point_a_mm, point_b_mm):
+    return (
+        point_a_mm[0] - point_b_mm[0],
+        point_a_mm[1] - point_b_mm[1],
+    )
+
+
+def dot_product_2d_mm(vector_a_mm, vector_b_mm):
+    return (
+        vector_a_mm[0] * vector_b_mm[0]
+        + vector_a_mm[1] * vector_b_mm[1]
+    )
+
+
+def create_point_in_sketch_space_mm(x_mm, y_mm):
+    return adsk.core.Point3D.create(
+        mm_to_cm(x_mm),
+        mm_to_cm(y_mm),
+        0.0,
+    )
+
+
+def get_sketch_space_point_mm(sketch, point_mm):
+    point = to_sketch_space(sketch, point_mm)
+    return (
+        point.x * 10.0,
+        point.y * 10.0,
+    )
+
+
 def project_point_to_line_mm(point_mm, line_start_mm, line_end_mm):
     ax_mm, ay_mm = line_start_mm
     bx_mm, by_mm = line_end_mm
@@ -1418,6 +1488,27 @@ def project_point_to_line_mm(point_mm, line_start_mm, line_end_mm):
         ax_mm + (dx_mm * t),
         ay_mm + (dy_mm * t),
     )
+
+
+def intersect_lines_2d_mm(line1_start_mm, line1_end_mm, line2_start_mm, line2_end_mm):
+    x1, y1 = line1_start_mm
+    x2, y2 = line1_end_mm
+    x3, y3 = line2_start_mm
+    x4, y4 = line2_end_mm
+
+    denominator = ((x1 - x2) * (y3 - y4)) - ((y1 - y2) * (x3 - x4))
+    if abs(denominator) <= 1e-9:
+        raise RuntimeError('2直線の交点を取得できませんでした。')
+
+    determinant_1 = (x1 * y2) - (y1 * x2)
+    determinant_2 = (x3 * y4) - (y3 * x4)
+    intersection_x = (
+        (determinant_1 * (x3 - x4)) - ((x1 - x2) * determinant_2)
+    ) / denominator
+    intersection_y = (
+        (determinant_1 * (y3 - y4)) - ((y1 - y2) * determinant_2)
+    ) / denominator
+    return (intersection_x, intersection_y)
 
 
 def tangent_points_from_external_point_to_circle_mm(point_mm, center_mm, radius_mm):
@@ -1441,6 +1532,36 @@ def tangent_points_from_external_point_to_circle_mm(point_mm, center_mm, radius_
             cy_mm + (scale * dy_mm) - (offset * dx_mm),
         ),
     ]
+
+
+def get_tangent_circle_center_between_lines_mm(
+    line_vertex_mm,
+    line_point_a_mm,
+    line_point_b_mm,
+    radius_mm,
+):
+    direction_a = normalize_vector_2d_mm(
+        line_point_a_mm[0] - line_vertex_mm[0],
+        line_point_a_mm[1] - line_vertex_mm[1],
+    )
+    direction_b = normalize_vector_2d_mm(
+        line_point_b_mm[0] - line_vertex_mm[0],
+        line_point_b_mm[1] - line_vertex_mm[1],
+    )
+    bisector = normalize_vector_2d_mm(
+        direction_a[0] + direction_b[0],
+        direction_a[1] + direction_b[1],
+    )
+    angle_cos = max(-1.0, min(1.0, dot_product_2d_mm(direction_a, direction_b)))
+    sin_half = math.sqrt(max(0.0, (1.0 - angle_cos) / 2.0))
+    if sin_half <= 1e-9:
+        raise RuntimeError('接円中心を計算できませんでした。')
+
+    distance_to_center_mm = radius_mm / sin_half
+    return add_vector_2d_mm(
+        line_vertex_mm,
+        scale_vector_2d_mm(bisector, distance_to_center_mm),
+    )
 
 
 def point_on_circle_from_angle_mm(center_mm, radius_mm, angle_rad):
@@ -1937,7 +2058,7 @@ def apply_constant_radius_fillet(root_comp, edge, radius_mm, tangent_chain=True)
     return fillets.add(fillet_input)
 
 
-def create_lid_inner_split_plane(root_comp, inner_shell_body=None):
+def find_lid_slope_face(root_comp, inner_shell_body=None):
     if inner_shell_body is None:
         inner_shell_body = helpers.find_body_by_name_or_attribute(root_comp, naming.BODY_INNER_SHELL)
     lid_slope_face = None
@@ -1981,12 +2102,25 @@ def create_lid_inner_split_plane(root_comp, inner_shell_body=None):
             else:
                 raise
 
+    return lid_slope_face
+
+
+def create_offset_plane_from_lid_slope(
+    root_comp,
+    plane_name,
+    offset_mm,
+    inner_shell_body=None,
+):
+    lid_slope_face = find_lid_slope_face(root_comp, inner_shell_body)
+    if lid_slope_face is None:
+        raise RuntimeError('内殻蓋部斜面を取得できませんでした。')
+
     geometry = adsk.core.Plane.cast(lid_slope_face.geometry)
     if not geometry:
         raise RuntimeError('内殻蓋部斜面の平面ジオメトリを取得できませんでした。')
 
     normal = geometry.normal
-    offset_value_cm = mm_to_cm(OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM)
+    offset_value_cm = mm_to_cm(offset_mm)
     if normal.z > 0.0:
         offset_value_cm *= -1.0
 
@@ -1997,8 +2131,71 @@ def create_lid_inner_split_plane(root_comp, inner_shell_body=None):
         adsk.core.ValueInput.createByReal(offset_value_cm),
     )
     plane = planes.add(plane_input)
-    plane.name = OUTER_SHELL_LID_INNER_PLANE_NAME
-    helpers.add_named_attribute(plane, OUTER_SHELL_LID_INNER_PLANE_NAME)
+    plane.name = plane_name
+    helpers.add_named_attribute(plane, plane_name)
+    return plane
+
+
+def create_lid_inner_split_plane(root_comp, inner_shell_body=None):
+    return create_offset_plane_from_lid_slope(
+        root_comp,
+        OUTER_SHELL_LID_INNER_PLANE_NAME,
+        OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM,
+        inner_shell_body=inner_shell_body,
+    )
+
+
+def create_lid_gap_plane(root_comp, inner_shell_body=None):
+    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    geometry = adsk.core.Plane.cast(lid_inner_plane.geometry)
+    if not geometry:
+        raise RuntimeError('外殻蓋部斜面内部の平面ジオメトリを取得できませんでした。')
+
+    normal = geometry.normal.copy()
+    if normal.length <= 1e-9:
+        raise RuntimeError('外殻蓋部斜面内部の法線を取得できませんでした。')
+    normal.normalize()
+
+    offset_sketch_points = []
+    for index, reference_point_mm in enumerate(INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM[:3]):
+        reference_point = create_point_mm(*reference_point_mm)
+        signed_distance = get_signed_distance_to_plane(geometry, reference_point)
+        projected_point = adsk.core.Point3D.create(
+            reference_point.x - (normal.x * signed_distance),
+            reference_point.y - (normal.y * signed_distance),
+            reference_point.z - (normal.z * signed_distance),
+        )
+        translated_point = adsk.core.Point3D.create(
+            projected_point.x,
+            projected_point.y,
+            projected_point.z + mm_to_cm(OUTER_SHELL_LID_GAP_PLANE_Z_OFFSET_MM),
+        )
+
+        point_plane = create_offset_plane_from_xy(
+            root_comp,
+            translated_point.z * 10.0,
+        )
+        point_sketch = root_comp.sketches.add(point_plane)
+        point_sketch.name = '{} 基準点{}'.format(
+            OUTER_SHELL_LID_GAP_PLANE_NAME,
+            index + 1,
+        )
+        offset_sketch_points.append(
+            point_sketch.sketchPoints.add(
+                point_sketch.modelToSketchSpace(translated_point)
+            )
+        )
+
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByThreePoints(
+        offset_sketch_points[0],
+        offset_sketch_points[1],
+        offset_sketch_points[2],
+    )
+    plane = planes.add(plane_input)
+    plane.name = OUTER_SHELL_LID_GAP_PLANE_NAME
+    helpers.add_named_attribute(plane, OUTER_SHELL_LID_GAP_PLANE_NAME)
     return plane
 
 
@@ -2421,6 +2618,19 @@ def create_offset_plane_from_xz(root_comp, offset_y_mm, name=None):
     plane_input.setByOffset(
         root_comp.xZConstructionPlane,
         adsk.core.ValueInput.createByReal(mm_to_cm(offset_y_mm)),
+    )
+    plane = planes.add(plane_input)
+    if name:
+        plane.name = name
+    return plane
+
+
+def create_offset_plane_from_xy(root_comp, offset_z_mm, name=None):
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByOffset(
+        root_comp.xYConstructionPlane,
+        adsk.core.ValueInput.createByReal(mm_to_cm(offset_z_mm)),
     )
     plane = planes.add(plane_input)
     if name:
@@ -3191,6 +3401,495 @@ def extrude_outer_shell_l_button_opening_region(root_comp, outer_shell_body, ske
     extrudes.add(extrude_input)
 
 
+def create_outer_shell_lid_gap_sketch(root_comp, outer_shell_body, inner_shell_body=None):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    lid_inner_reference_sketch = root_comp.sketches.add(lid_inner_plane)
+ 
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    sketch_face = find_best_planar_face_near_reference_points(
+        current_outer_shell_body,
+        (
+            OUTER_SHELL_LID_GAP_POINT_A_MM,
+            OUTER_SHELL_LID_GAP_POINT_F_MM,
+            OUTER_SHELL_LID_GAP_POINT_H_MM,
+        ),
+    )
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByOffset(
+        sketch_face,
+        adsk.core.ValueInput.createByReal(0.0),
+    )
+    sketch_plane = planes.add(plane_input)
+    sketch_plane.name = '{} 平面'.format(OUTER_SHELL_LID_GAP_SKETCH_NAME)
+    sketch = root_comp.sketches.add(sketch_plane)
+    sketch.name = OUTER_SHELL_LID_GAP_SKETCH_NAME
+
+    projected_entities = to_entity_list(sketch.intersectWithSketchPlane([outer_shell_body]))
+    for projected_entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(projected_entity)
+        if sketch_curve:
+            sketch_curve.isConstruction = True
+
+    points_3d_mm = {
+        'A': OUTER_SHELL_LID_GAP_POINT_A_MM,
+        'B': OUTER_SHELL_LID_GAP_POINT_B_MM,
+        'C': OUTER_SHELL_LID_GAP_POINT_C_MM,
+        'D': OUTER_SHELL_LID_GAP_POINT_D_MM,
+        'E': OUTER_SHELL_LID_GAP_POINT_E_MM,
+        'F': OUTER_SHELL_LID_GAP_POINT_F_MM,
+        'G': OUTER_SHELL_LID_GAP_POINT_G_MM,
+        'H': OUTER_SHELL_LID_GAP_POINT_H_MM,
+        'I': OUTER_SHELL_LID_GAP_POINT_I_MM,
+    }
+    points_mm = {
+        name: (
+            lid_inner_reference_sketch.modelToSketchSpace(create_point_mm(*point_mm)).x * 10.0,
+            lid_inner_reference_sketch.modelToSketchSpace(create_point_mm(*point_mm)).y * 10.0,
+        )
+        for name, point_mm in points_3d_mm.items()
+    }
+    lid_inner_reference_sketch.deleteMe()
+
+    circle_k_radius_mm = (
+        get_distance_2d_mm(points_mm['I'], points_mm['E'])
+        + get_distance_2d_mm(points_mm['I'], points_mm['H'])
+    ) / 2.0
+    points_mm['E'] = offset_point_from_circle(
+        points_mm['I'],
+        points_mm['E'],
+        circle_k_radius_mm - get_distance_2d_mm(points_mm['I'], points_mm['E']),
+    )
+    points_mm['H'] = offset_point_from_circle(
+        points_mm['I'],
+        points_mm['H'],
+        circle_k_radius_mm - get_distance_2d_mm(points_mm['I'], points_mm['H']),
+    )
+    circle_l_center_mm = get_tangent_circle_center_between_lines_mm(
+        points_mm['I'],
+        points_mm['F'],
+        points_mm['G'],
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+    )
+    point_m_mm = project_point_to_line_mm(
+        circle_l_center_mm,
+        points_mm['I'],
+        points_mm['F'],
+    )
+    tangent_points_n_mm = tangent_points_from_external_point_to_circle_mm(
+        points_mm['H'],
+        circle_l_center_mm,
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+    )
+    point_n_mm = min(
+        tangent_points_n_mm,
+        key=lambda point_mm: get_distance_2d_mm(point_mm, points_mm['I']),
+    )
+
+    sketch_points = {}
+    for name, point_mm in points_mm.items():
+        sketch_points[name] = sketch.sketchPoints.add(
+            create_point_in_sketch_space_mm(*point_mm)
+        )
+    sketch_points['M'] = sketch.sketchPoints.add(
+        create_point_in_sketch_space_mm(*point_m_mm)
+    )
+    sketch_points['N'] = sketch.sketchPoints.add(
+        create_point_in_sketch_space_mm(*point_n_mm)
+    )
+    points_mm['M'] = point_m_mm
+    points_mm['N'] = point_n_mm
+
+    lines = sketch.sketchCurves.sketchLines
+    circles = sketch.sketchCurves.sketchCircles
+    arcs = sketch.sketchCurves.sketchArcs
+
+    for start_name, end_name in (
+        ('A', 'B'),
+        ('B', 'C'),
+        ('C', 'D'),
+        ('D', 'E'),
+        ('A', 'F'),
+        ('F', 'M'),
+        ('H', 'N'),
+    ):
+        if get_distance_2d_mm(points_mm[start_name], points_mm[end_name]) <= 1e-6:
+            continue
+        lines.addByTwoPoints(
+            sketch_points[start_name],
+            sketch_points[end_name],
+        )
+
+    line_if = lines.addByTwoPoints(sketch_points['I'], sketch_points['F'])
+    line_if.isConstruction = True
+    line_ig = lines.addByTwoPoints(sketch_points['I'], sketch_points['G'])
+    line_ig.isConstruction = True
+
+    circle_k = circles.addByCenterRadius(
+        sketch_points['I'].geometry,
+        mm_to_cm(circle_k_radius_mm),
+    )
+    circle_k.isConstruction = True
+    circle_l = circles.addByCenterRadius(
+        create_point_in_sketch_space_mm(*circle_l_center_mm),
+        mm_to_cm(OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM),
+    )
+    circle_l.isConstruction = True
+
+    angle_e_rad = angle_for_point_on_circle_mm(points_mm['I'], points_mm['E'])
+    angle_h_rad = angle_for_point_on_circle_mm(points_mm['I'], points_mm['H'])
+    mid_angle_k_rad = midpoint_angle_rad(
+        angle_e_rad,
+        angle_h_rad,
+    )
+    arc_k_midpoint_mm = point_on_circle_from_angle_mm(
+        points_mm['I'],
+        circle_k_radius_mm,
+        mid_angle_k_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['E'].geometry,
+        create_point_in_sketch_space_mm(*arc_k_midpoint_mm),
+        sketch_points['H'].geometry,
+    )
+
+    angle_m_rad = angle_for_point_on_circle_mm(circle_l_center_mm, point_m_mm)
+    angle_n_rad = angle_for_point_on_circle_mm(circle_l_center_mm, point_n_mm)
+    angle_i_rad = angle_for_point_on_circle_mm(circle_l_center_mm, points_mm['I'])
+    mid_angle_l_rad = midpoint_angle_rad(
+        angle_m_rad,
+        angle_n_rad,
+        via_angle_rad=angle_i_rad,
+    )
+    arc_l_midpoint_mm = point_on_circle_from_angle_mm(
+        circle_l_center_mm,
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+        mid_angle_l_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['M'].geometry,
+        create_point_in_sketch_space_mm(*arc_l_midpoint_mm),
+        sketch_points['N'].geometry,
+    )
+    primary_profile_target_mm = (
+        (points_mm['A'][0] + points_mm['F'][0]) / 2.0,
+        points_mm['A'][1] - 10.0,
+    )
+
+    return {
+        'plane': sketch_plane,
+        'sketch': sketch,
+        'primary_profile_target_point': create_point_in_sketch_space_mm(*primary_profile_target_mm),
+    }
+
+
+def extrude_outer_shell_lid_gap_region(root_comp, outer_shell_body, sketch, plane, profile_target_point):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if plane is None:
+        raise RuntimeError('plane is required.')
+    if profile_target_point is None:
+        raise RuntimeError('profile_target_point is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    plane_geometry = adsk.core.Plane.cast(plane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('外殻蓋部斜面隙間部平面のジオメトリを取得できませんでした。')
+
+    profile = get_profile_containing_point(sketch, profile_target_point)
+    centroid = sketch.sketchToModelSpace(profile.areaProperties().centroid)
+    path_plane = create_offset_plane_from_xz(
+        root_comp,
+        centroid.y * 10.0,
+        '{} パス'.format(OUTER_SHELL_LID_GAP_SKETCH_NAME),
+    )
+    path_sketch = root_comp.sketches.add(path_plane)
+    path_sketch.name = '{} パス'.format(OUTER_SHELL_LID_GAP_SKETCH_NAME)
+
+    start_point = path_sketch.modelToSketchSpace(centroid)
+    end_point = path_sketch.modelToSketchSpace(
+        adsk.core.Point3D.create(
+            centroid.x,
+            centroid.y,
+            centroid.z + mm_to_cm(OUTER_SHELL_LID_GAP_EXTRUDE_DISTANCE_MM),
+        )
+    )
+    path_line = path_sketch.sketchCurves.sketchLines.addByTwoPoints(
+        start_point,
+        end_point,
+    )
+    path = root_comp.features.createPath(path_line)
+
+    sweeps = root_comp.features.sweepFeatures
+    sweep_input = sweeps.createInput(
+        profile,
+        path,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    sweep_input.participantBodies = [current_outer_shell_body]
+    feature = sweeps.add(sweep_input)
+
+    translated_reference_points_mm = [
+        (point_mm[0], point_mm[1], point_mm[2] + OUTER_SHELL_LID_GAP_EXTRUDE_DISTANCE_MM)
+        for point_mm in (
+            OUTER_SHELL_LID_GAP_POINT_A_MM,
+            OUTER_SHELL_LID_GAP_POINT_F_MM,
+            OUTER_SHELL_LID_GAP_POINT_H_MM,
+        )
+    ]
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if updated_outer_shell_body is None:
+        updated_outer_shell_body = current_outer_shell_body
+
+    top_face = find_best_planar_face_near_reference_points(
+        updated_outer_shell_body,
+        translated_reference_points_mm,
+    )
+    helpers.add_named_attribute(top_face, OUTER_SHELL_LID_OUTER_SLOPE_FACE_NAME)
+    return updated_outer_shell_body
+
+
+def create_outer_shell_lid_gap_extension_sketch(root_comp, outer_shell_body, inner_shell_body=None):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    lid_inner_reference_sketch = root_comp.sketches.add(lid_inner_plane)
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    sketch_face = find_best_planar_face_near_reference_points(
+        current_outer_shell_body,
+        (
+            OUTER_SHELL_LID_GAP_POINT_A_MM,
+            OUTER_SHELL_LID_GAP_POINT_F_MM,
+            OUTER_SHELL_LID_GAP_POINT_H_MM,
+        ),
+    )
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByOffset(
+        sketch_face,
+        adsk.core.ValueInput.createByReal(0.0),
+    )
+    sketch_plane = planes.add(plane_input)
+    sketch_plane.name = '{} 追加平面'.format(OUTER_SHELL_LID_GAP_SKETCH_NAME)
+    sketch = root_comp.sketches.add(sketch_plane)
+    sketch.name = '{} 追加'.format(OUTER_SHELL_LID_GAP_SKETCH_NAME)
+
+    points_3d_mm = {
+        'F': OUTER_SHELL_LID_GAP_POINT_F_MM,
+        'G': OUTER_SHELL_LID_GAP_POINT_G_MM,
+        'H': OUTER_SHELL_LID_GAP_POINT_H_MM,
+        'I': OUTER_SHELL_LID_GAP_POINT_I_MM,
+    }
+    points_mm = {
+        name: (
+            lid_inner_reference_sketch.modelToSketchSpace(create_point_mm(*point_mm)).x * 10.0,
+            lid_inner_reference_sketch.modelToSketchSpace(create_point_mm(*point_mm)).y * 10.0,
+        )
+        for name, point_mm in points_3d_mm.items()
+    }
+    lid_inner_reference_sketch.deleteMe()
+
+    circle_k_radius_mm = (
+        get_distance_2d_mm(points_mm['I'], points_mm['F'])
+        + get_distance_2d_mm(points_mm['I'], points_mm['G'])
+    ) / 2.0
+    points_mm['F'] = offset_point_from_circle(
+        points_mm['I'],
+        points_mm['F'],
+        circle_k_radius_mm - get_distance_2d_mm(points_mm['I'], points_mm['F']),
+    )
+    points_mm['G'] = offset_point_from_circle(
+        points_mm['I'],
+        points_mm['G'],
+        circle_k_radius_mm - get_distance_2d_mm(points_mm['I'], points_mm['G']),
+    )
+    circle_l_center_mm = get_tangent_circle_center_between_lines_mm(
+        points_mm['I'],
+        points_mm['F'],
+        points_mm['G'],
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+    )
+    point_m_mm = project_point_to_line_mm(
+        circle_l_center_mm,
+        points_mm['I'],
+        points_mm['F'],
+    )
+    tangent_points_n_mm = tangent_points_from_external_point_to_circle_mm(
+        points_mm['H'],
+        circle_l_center_mm,
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+    )
+    point_n_mm = min(
+        tangent_points_n_mm,
+        key=lambda point_mm: get_distance_2d_mm(point_mm, points_mm['I']),
+    )
+    point_p_mm = intersect_lines_2d_mm(
+        points_mm['H'],
+        point_n_mm,
+        points_mm['G'],
+        points_mm['I'],
+    )
+
+    sketch_points = {}
+    for name, point_mm in points_mm.items():
+        sketch_points[name] = sketch.sketchPoints.add(
+            create_point_in_sketch_space_mm(*point_mm)
+        )
+    sketch_points['M'] = sketch.sketchPoints.add(
+        create_point_in_sketch_space_mm(*point_m_mm)
+    )
+    sketch_points['N'] = sketch.sketchPoints.add(
+        create_point_in_sketch_space_mm(*point_n_mm)
+    )
+    sketch_points['P'] = sketch.sketchPoints.add(
+        create_point_in_sketch_space_mm(*point_p_mm)
+    )
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+
+    lines.addByTwoPoints(sketch_points['G'], sketch_points['P'])
+    lines.addByTwoPoints(sketch_points['P'], sketch_points['N'])
+    lines.addByTwoPoints(sketch_points['M'], sketch_points['F'])
+
+    angle_m_rad = angle_for_point_on_circle_mm(circle_l_center_mm, point_m_mm)
+    angle_n_rad = angle_for_point_on_circle_mm(circle_l_center_mm, point_n_mm)
+    angle_i_rad = angle_for_point_on_circle_mm(circle_l_center_mm, points_mm['I'])
+    mid_angle_l_rad = midpoint_angle_rad(
+        angle_m_rad,
+        angle_n_rad,
+        via_angle_rad=angle_i_rad,
+    )
+    arc_l_midpoint_mm = point_on_circle_from_angle_mm(
+        circle_l_center_mm,
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+        mid_angle_l_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['N'].geometry,
+        create_point_in_sketch_space_mm(*arc_l_midpoint_mm),
+        sketch_points['M'].geometry,
+    )
+
+    angle_f_rad = angle_for_point_on_circle_mm(points_mm['I'], points_mm['F'])
+    angle_g_rad = angle_for_point_on_circle_mm(points_mm['I'], points_mm['G'])
+    mid_angle_fg_rad = midpoint_angle_rad(
+        angle_f_rad,
+        angle_g_rad,
+    )
+    arc_fg_midpoint_mm = point_on_circle_from_angle_mm(
+        points_mm['I'],
+        circle_k_radius_mm,
+        mid_angle_fg_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['F'].geometry,
+        create_point_in_sketch_space_mm(*arc_fg_midpoint_mm),
+        sketch_points['G'].geometry,
+    )
+
+    extension_profile_target_mm = (
+        (points_mm['G'][0] + point_p_mm[0] + point_n_mm[0] + point_m_mm[0] + points_mm['F'][0]) / 5.0,
+        (points_mm['G'][1] + point_p_mm[1] + point_n_mm[1] + point_m_mm[1] + points_mm['F'][1]) / 5.0,
+    )
+
+    return {
+        'plane': sketch_plane,
+        'sketch': sketch,
+        'extension_profile_target_point': create_point_in_sketch_space_mm(*extension_profile_target_mm),
+    }
+
+
+def extrude_outer_shell_lid_gap_extension_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    plane,
+    profile_target_point,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if plane is None:
+        raise RuntimeError('plane is required.')
+    if profile_target_point is None:
+        raise RuntimeError('profile_target_point is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    profile = get_profile_nearest_point(sketch, profile_target_point)
+    plane_geometry = adsk.core.Plane.cast(plane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('外殻蓋部斜面隙間部平面のジオメトリを取得できませんでした。')
+
+    direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(OUTER_SHELL_LID_GAP_EXTENSION_EXTRUDE_DISTANCE_MM)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if updated_outer_shell_body is None:
+        updated_outer_shell_body = current_outer_shell_body
+    return updated_outer_shell_body
+
+
 def add_outer_shell_l_button_opening_offset_fillet(root_comp, outer_shell_body):
     _ = root_comp
     _ = outer_shell_body
@@ -3285,6 +3984,16 @@ def add_structures_to_outer_shell_base_structure(
         outer_shell_base_structure_body,
         inner_shell_body,
     )
+    lid_gap_data = create_outer_shell_lid_gap_sketch(
+        root_comp,
+        current_outer_shell_body,
+        inner_shell_body=inner_shell_body,
+    )
+    lid_gap_extension_data = create_outer_shell_lid_gap_extension_sketch(
+        root_comp,
+        current_outer_shell_body,
+        inner_shell_body=inner_shell_body,
+    )
     opening_base_data = create_outer_shell_l_button_opening_base_structure_sketch(
         root_comp,
         current_outer_shell_body,
@@ -3320,6 +4029,24 @@ def add_structures_to_outer_shell_base_structure(
         inner_spec_data['sketch'],
         inner_spec_data['axis_line'],
         inner_shell_body=inner_shell_body,
+    )
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
+    current_outer_shell_body = extrude_outer_shell_lid_gap_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_gap_data['sketch'],
+        lid_gap_data['plane'],
+        lid_gap_data['primary_profile_target_point'],
+    )
+    current_outer_shell_body = extrude_outer_shell_lid_gap_extension_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_gap_extension_data['sketch'],
+        lid_gap_extension_data['plane'],
+        lid_gap_extension_data['extension_profile_target_point'],
     )
     return current_outer_shell_body
 

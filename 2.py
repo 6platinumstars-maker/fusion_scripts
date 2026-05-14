@@ -129,6 +129,24 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         outer_shell_body,
         inner_shell_body,
     )
+    lid_gap_data = outer_shell.create_outer_shell_lid_gap_sketch(
+        root_comp,
+        outer_shell_body,
+        inner_shell_body=inner_shell_body,
+    )
+    outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_region(
+        root_comp,
+        outer_shell_body,
+        lid_gap_data['sketch'],
+        lid_gap_data['plane'],
+    )
+    outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_extension_region(
+        root_comp,
+        outer_shell_body,
+        lid_gap_data['sketch'],
+        lid_gap_data['plane'],
+        lid_gap_data['extension_profile_target_point'],
+    )
     outer_shell.cut_outer_shell_y35_face_region(
         root_comp,
         outer_shell_body,
