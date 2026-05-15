@@ -80,3 +80,32 @@ def find_body_by_name_or_attribute(root_comp, name):
     if body:
         return body
     return find_body_by_named_attribute(root_comp, name)
+
+
+def find_construction_plane_by_name(root_comp, name):
+    planes = root_comp.constructionPlanes
+    for index in range(planes.count):
+        plane = planes.item(index)
+        if plane.name == name:
+            return plane
+    return None
+
+
+def find_construction_plane_by_named_attribute(root_comp, name):
+    planes = root_comp.constructionPlanes
+    for index in range(planes.count):
+        plane = planes.item(index)
+        attr = plane.attributes.itemByName(
+            naming.ATTRIBUTE_GROUP,
+            naming.ATTRIBUTE_NAME_KEY,
+        )
+        if attr and attr.value == name:
+            return plane
+    return None
+
+
+def find_construction_plane_by_name_or_attribute(root_comp, name):
+    plane = find_construction_plane_by_name(root_comp, name)
+    if plane:
+        return plane
+    return find_construction_plane_by_named_attribute(root_comp, name)

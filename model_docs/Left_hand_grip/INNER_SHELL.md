@@ -1,16 +1,16 @@
 # Left_hand_grip Inner Shell
 
-`fusion_app/Left_hand_grip.py` と `fusion_app/inner_shell.py` に対応する、`内殻` 中心のモデル説明です。
+`fusion_app/Left_hand_grip.py` と `fusion_app/inner_shell.py` に対応する、`内殻` 中心のモデル説明です。現在の実行本体は `inner_shell.py` です。
 
 ## 対象ファイル
 
-- 旧一体型スクリプト: [fusion_app/Left_hand_grip.py](/home/ps/fusion_scripts/fusion_app/Left_hand_grip.py)
-- 分割後スクリプト: [fusion_app/inner_shell.py](/home/ps/fusion_scripts/fusion_app/inner_shell.py)
+- 互換入口として残す旧スクリプト: [fusion_app/Left_hand_grip.py](/home/ps/fusion_scripts/fusion_app/Left_hand_grip.py)
+- 現在の内殻生成本体: [fusion_app/inner_shell.py](/home/ps/fusion_scripts/fusion_app/inner_shell.py)
 - 実行用コピー: [1.py](/home/ps/fusion_scripts/1.py)
 
-## 旧 `Left_hand_grip.py` の構成
+## 現在の `inner_shell.py` の構成
 
-`Left_hand_grip.py` は現在、次の順序で主に `内殻` 側の形状を作ります。
+`inner_shell.py` は現在、次の順序で主に `内殻` 側の形状を作ります。
 
 1. XY 面に `底面内部` スケッチを作成し、ベースボディを `-Z` 方向へ 3 mm 押し出す
 2. XY 面に `ジョイスティック受け外周` スケッチを作成する
@@ -35,6 +35,8 @@
 21. 押し出し後の `止金半円部` 先端側円弧エッジにだけ `R1.0` フィレットをかける
 22. XY 面に `ジョイステック受け` スケッチを作成する
 23. `ジョイステック受け` を `+Z` 方向へ 10 mm `Cut` 押し出しし、底面斜面および下部止部を切り取る
+
+`inner_shell.py` の `build_inner_shell()` は上記の内殻本体を生成し、その後 `add_inner_shell_lid_revolve_cut()` を別工程として適用できます。`assembly_left_hand_grip.py` では外殻生成後に適用し、`1.py` でも単体確認用に同じ回転切り取りを追加しています。
 
 ## 内殻の主要仕様
 
@@ -124,6 +126,19 @@
 - フィレット対象: E 円弧、`DF`、`CG` に対応する 3 本のエッジ
 - フィレット半径: `R2.0`
 
+### 内殻蓋部回転切り取り
+
+- スケッチ名: `内殻蓋部回転切り取り`
+- スケッチ面: `YZ` 面を `X = -41.86 mm` へオフセットした平面
+- 領域頂点: `A (-41.86, -28.353, 22.124) mm`、`B (-41.86, -28.358, 20.988) mm`、`C (-41.86, -25.617, 21.216) mm`、`D (-41.86, -21.614, 20.355) mm`、`E (-41.86, -21.619, 22.126) mm`
+- 回転軸: `X (-41.86, 5.062, 23.966) mm` と `Y (-41.86, 5.695, 15.591) mm`
+- スケッチ形状: 五角形 `ABCDE` と軸線 `XY`
+- 回転対象: `ABCDE` の閉領域
+- 回転方向: `360 deg`
+- 回転方法: `Cut`
+- 参加ボディ: 実行時に渡された `内殻` ボディを優先し、未指定時は `内殻外周` を優先して探索する
+- 実行タイミング: `assembly_left_hand_grip.py` で外殻生成完了後、グリップ生成前
+
 ### 下部止部
 
 - 名称: `下部止部`
@@ -155,6 +170,7 @@
 - `内殻外周`
 - `分割断面`
 - `内殻蓋部`
+- `内殻蓋部回転切り取り`
 - `内殻外部_仕様`
 - `上部止部`
 - `下部止部`
@@ -179,4 +195,5 @@
 ## 補足
 
 - 辺には現在、固有名を付けていません。
-- `Left_hand_grip.py` は旧一体型実装ですが、内殻側の仕様把握には引き続き有効です。
+- `Left_hand_grip.py` は互換入口として残しています。
+- `inner_shell.py` が現在の内殻生成本体です。

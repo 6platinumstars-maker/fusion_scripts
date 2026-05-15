@@ -179,6 +179,7 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         lid_gap_extension_data['plane'],
         lid_gap_extension_data['extension_profile_target_point'],
     )
+    inner_shell.add_inner_shell_lid_revolve_cut(root_comp, inner_shell_body)
     grip_body = grip.build_grip(
         root_comp,
         outer_shell_body,

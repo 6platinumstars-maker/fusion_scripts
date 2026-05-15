@@ -134,18 +134,10 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         outer_shell_body,
         inner_shell_body=inner_shell_body,
     )
-    outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_region(
+    lid_gap_extension_data = outer_shell.create_outer_shell_lid_gap_extension_sketch(
         root_comp,
         outer_shell_body,
-        lid_gap_data['sketch'],
-        lid_gap_data['plane'],
-    )
-    outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_extension_region(
-        root_comp,
-        outer_shell_body,
-        lid_gap_data['sketch'],
-        lid_gap_data['plane'],
-        lid_gap_data['extension_profile_target_point'],
+        inner_shell_body=inner_shell_body,
     )
     outer_shell.cut_outer_shell_y35_face_region(
         root_comp,
@@ -173,6 +165,21 @@ def build_all(context=None, grip_params=None, outer_shell_params=None):
         inner_spec_data['axis_line'],
         inner_shell_body=inner_shell_body,
     )
+    outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_region(
+        root_comp,
+        outer_shell_body,
+        lid_gap_data['sketch'],
+        lid_gap_data['plane'],
+        lid_gap_data['primary_profile_target_point'],
+    )
+    outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_extension_region(
+        root_comp,
+        outer_shell_body,
+        lid_gap_extension_data['sketch'],
+        lid_gap_extension_data['plane'],
+        lid_gap_extension_data['extension_profile_target_point'],
+    )
+    inner_shell.add_inner_shell_lid_revolve_cut(root_comp, inner_shell_body)
     grip_body = grip.build_grip(
         root_comp,
         outer_shell_body,

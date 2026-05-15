@@ -51,6 +51,7 @@ OUTER_SHELL_LID_GAP_PLANE_Z_OFFSET_MM = 0.2
 OUTER_SHELL_LID_GAP_SKETCH_NAME = '外殻蓋部斜面隙間部'
 OUTER_SHELL_LID_GAP_EXTRUDE_DISTANCE_MM = 3.0
 OUTER_SHELL_LID_GAP_EXTENSION_EXTRUDE_DISTANCE_MM = 5.0
+OUTER_SHELL_LID_GAP_EXTENSION_FILLET_RADIUS_MM = 3.0
 OUTER_SHELL_LID_OUTER_SLOPE_FACE_NAME = '外殻蓋部斜面外側'
 OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM = 3.4
 OUTER_SHELL_LID_GAP_POINT_A_MM = (-90.0, 32.2, 26.621)
@@ -184,6 +185,14 @@ def create_sketch_point(sketch, point_mm):
 
 def to_sketch_space(sketch, point_mm):
     return sketch.modelToSketchSpace(create_point_mm(*point_mm))
+
+
+def point3d_to_mm_tuple(point):
+    return (
+        point.x * 10.0,
+        point.y * 10.0,
+        point.z * 10.0,
+    )
 
 
 def get_point_distance(point_a, point_b):
@@ -670,13 +679,21 @@ def find_linear_edge_parallel_to_y_near_point(body, target_point_mm, tolerance_c
     return candidate_edge
 
 
-def get_face_edge_nearest_point(face, target_point_mm, excluded_tokens=None, require_non_linear=False):
+def get_face_edge_nearest_point(
+    face,
+    target_point_mm,
+    excluded_tokens=None,
+    require_non_linear=False,
+    require_linear=False,
+):
     target_point = create_point_mm(*target_point_mm)
     nearest_edge = None
     nearest_score = None
 
     for edge in face.edges:
         if excluded_tokens and edge.entityToken in excluded_tokens:
+            continue
+        if require_linear and not is_linear_edge(edge):
             continue
         if require_non_linear and is_linear_edge(edge):
             continue
@@ -2047,10 +2064,20 @@ def find_arc_edge_near_points_on_xy_plane(body, reference_points_mm, z_value_mm,
 
 
 def apply_constant_radius_fillet(root_comp, edge, radius_mm, tangent_chain=True):
+    return apply_constant_radius_fillets(
+        root_comp,
+        [edge],
+        radius_mm,
+        tangent_chain=tangent_chain,
+    )
+
+
+def apply_constant_radius_fillets(root_comp, edges, radius_mm, tangent_chain=True):
     fillets = root_comp.features.filletFeatures
     fillet_input = fillets.createInput()
     edge_collection = adsk.core.ObjectCollection.create()
-    edge_collection.add(edge)
+    for edge in edges:
+        edge_collection.add(edge)
 
     radius_value = adsk.core.ValueInput.createByReal(mm_to_cm(radius_mm))
     fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_value, tangent_chain)
@@ -2111,6 +2138,13 @@ def create_offset_plane_from_lid_slope(
     offset_mm,
     inner_shell_body=None,
 ):
+    existing_plane = helpers.find_construction_plane_by_name_or_attribute(
+        root_comp,
+        plane_name,
+    )
+    if existing_plane is not None:
+        return existing_plane
+
     lid_slope_face = find_lid_slope_face(root_comp, inner_shell_body)
     if lid_slope_face is None:
         raise RuntimeError('内殻蓋部斜面を取得できませんでした。')
@@ -3674,6 +3708,111 @@ def extrude_outer_shell_lid_gap_region(root_comp, outer_shell_body, sketch, plan
     return updated_outer_shell_body
 
 
+def calculate_outer_shell_lid_gap_extension_profile_geometry_mm(root_comp, inner_shell_body=None):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+
+    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    lid_inner_reference_sketch = root_comp.sketches.add(lid_inner_plane)
+
+    points_3d_mm = {
+        'F': OUTER_SHELL_LID_GAP_POINT_F_MM,
+        'G': OUTER_SHELL_LID_GAP_POINT_G_MM,
+        'H': OUTER_SHELL_LID_GAP_POINT_H_MM,
+        'I': OUTER_SHELL_LID_GAP_POINT_I_MM,
+    }
+    points_mm = {
+        name: (
+            lid_inner_reference_sketch.modelToSketchSpace(create_point_mm(*point_mm)).x * 10.0,
+            lid_inner_reference_sketch.modelToSketchSpace(create_point_mm(*point_mm)).y * 10.0,
+        )
+        for name, point_mm in points_3d_mm.items()
+    }
+    lid_inner_reference_sketch.deleteMe()
+
+    circle_k_radius_mm = (
+        get_distance_2d_mm(points_mm['I'], points_mm['F'])
+        + get_distance_2d_mm(points_mm['I'], points_mm['G'])
+    ) / 2.0
+    points_mm['F'] = offset_point_from_circle(
+        points_mm['I'],
+        points_mm['F'],
+        circle_k_radius_mm - get_distance_2d_mm(points_mm['I'], points_mm['F']),
+    )
+    points_mm['G'] = offset_point_from_circle(
+        points_mm['I'],
+        points_mm['G'],
+        circle_k_radius_mm - get_distance_2d_mm(points_mm['I'], points_mm['G']),
+    )
+    circle_l_center_mm = get_tangent_circle_center_between_lines_mm(
+        points_mm['I'],
+        points_mm['F'],
+        points_mm['G'],
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+    )
+    point_m_mm = project_point_to_line_mm(
+        circle_l_center_mm,
+        points_mm['I'],
+        points_mm['F'],
+    )
+    tangent_points_n_mm = tangent_points_from_external_point_to_circle_mm(
+        points_mm['H'],
+        circle_l_center_mm,
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+    )
+    point_n_mm = min(
+        tangent_points_n_mm,
+        key=lambda point_mm: get_distance_2d_mm(point_mm, points_mm['I']),
+    )
+    point_p_mm = intersect_lines_2d_mm(
+        points_mm['H'],
+        point_n_mm,
+        points_mm['G'],
+        points_mm['I'],
+    )
+
+    angle_m_rad = angle_for_point_on_circle_mm(circle_l_center_mm, point_m_mm)
+    angle_n_rad = angle_for_point_on_circle_mm(circle_l_center_mm, point_n_mm)
+    angle_i_rad = angle_for_point_on_circle_mm(circle_l_center_mm, points_mm['I'])
+    mid_angle_l_rad = midpoint_angle_rad(
+        angle_m_rad,
+        angle_n_rad,
+        via_angle_rad=angle_i_rad,
+    )
+    arc_l_midpoint_mm = point_on_circle_from_angle_mm(
+        circle_l_center_mm,
+        OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM,
+        mid_angle_l_rad,
+    )
+
+    angle_f_rad = angle_for_point_on_circle_mm(points_mm['I'], points_mm['F'])
+    angle_g_rad = angle_for_point_on_circle_mm(points_mm['I'], points_mm['G'])
+    mid_angle_fg_rad = midpoint_angle_rad(
+        angle_f_rad,
+        angle_g_rad,
+    )
+    arc_fg_midpoint_mm = point_on_circle_from_angle_mm(
+        points_mm['I'],
+        circle_k_radius_mm,
+        mid_angle_fg_rad,
+    )
+
+    extension_profile_target_mm = (
+        (points_mm['G'][0] + point_p_mm[0] + point_n_mm[0] + point_m_mm[0] + points_mm['F'][0]) / 5.0,
+        (points_mm['G'][1] + point_p_mm[1] + point_n_mm[1] + point_m_mm[1] + points_mm['F'][1]) / 5.0,
+    )
+
+    return {
+        'points_mm': points_mm,
+        'point_m_mm': point_m_mm,
+        'point_n_mm': point_n_mm,
+        'point_p_mm': point_p_mm,
+        'arc_nm_midpoint_mm': arc_l_midpoint_mm,
+        'arc_fg_midpoint_mm': arc_fg_midpoint_mm,
+        'extension_profile_target_mm': extension_profile_target_mm,
+    }
+
+
 def create_outer_shell_lid_gap_extension_sketch(root_comp, outer_shell_body, inner_shell_body=None):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -3835,6 +3974,104 @@ def create_outer_shell_lid_gap_extension_sketch(root_comp, outer_shell_body, inn
     }
 
 
+def add_outer_shell_lid_gap_extension_fillet(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    plane,
+    inner_shell_body=None,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if plane is None:
+        raise RuntimeError('plane is required.')
+
+    plane_geometry = adsk.core.Plane.cast(plane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('外殻蓋部斜面隙間部平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal.copy()
+    if normal.length <= 1e-9:
+        raise RuntimeError('外殻蓋部斜面隙間部平面の法線を取得できませんでした。')
+    normal.normalize()
+
+    geometry_mm = calculate_outer_shell_lid_gap_extension_profile_geometry_mm(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+    )
+    reference_points_2d = {
+        'arc_nm': geometry_mm['arc_nm_midpoint_mm'],
+        'line_pn': (
+            (geometry_mm['point_p_mm'][0] + geometry_mm['point_n_mm'][0]) / 2.0,
+            (geometry_mm['point_p_mm'][1] + geometry_mm['point_n_mm'][1]) / 2.0,
+        ),
+        'line_mf': (
+            (geometry_mm['point_m_mm'][0] + geometry_mm['points_mm']['F'][0]) / 2.0,
+            (geometry_mm['point_m_mm'][1] + geometry_mm['points_mm']['F'][1]) / 2.0,
+        ),
+        'face_f': geometry_mm['points_mm']['F'],
+        'face_g': geometry_mm['points_mm']['G'],
+        'face_center': geometry_mm['extension_profile_target_mm'],
+    }
+    translated_points_mm = {}
+    offset_distance_cm = mm_to_cm(OUTER_SHELL_LID_GAP_EXTENSION_EXTRUDE_DISTANCE_MM)
+
+    for key, point_2d_mm in reference_points_2d.items():
+        model_point = sketch.sketchToModelSpace(
+            create_point_in_sketch_space_mm(*point_2d_mm)
+        )
+        translated_point = adsk.core.Point3D.create(
+            model_point.x - (normal.x * offset_distance_cm),
+            model_point.y - (normal.y * offset_distance_cm),
+            model_point.z - (normal.z * offset_distance_cm),
+        )
+        translated_points_mm[key] = point3d_to_mm_tuple(translated_point)
+
+    target_face = find_best_planar_face_near_reference_points(
+        outer_shell_body,
+        (
+            translated_points_mm['face_f'],
+            translated_points_mm['face_g'],
+            translated_points_mm['face_center'],
+        ),
+    )
+
+    selected_tokens = set()
+    arc_edge = get_face_edge_nearest_point(
+        target_face,
+        translated_points_mm['arc_nm'],
+        excluded_tokens=selected_tokens,
+        require_non_linear=True,
+    )
+    selected_tokens.add(arc_edge.entityToken)
+
+    line_pn_edge = get_face_edge_nearest_point(
+        target_face,
+        translated_points_mm['line_pn'],
+        excluded_tokens=selected_tokens,
+        require_linear=True,
+    )
+    selected_tokens.add(line_pn_edge.entityToken)
+
+    line_mf_edge = get_face_edge_nearest_point(
+        target_face,
+        translated_points_mm['line_mf'],
+        excluded_tokens=selected_tokens,
+        require_linear=True,
+    )
+
+    apply_constant_radius_fillets(
+        root_comp,
+        [arc_edge, line_pn_edge, line_mf_edge],
+        OUTER_SHELL_LID_GAP_EXTENSION_FILLET_RADIUS_MM,
+        tangent_chain=False,
+    )
+
+
 def extrude_outer_shell_lid_gap_extension_region(
     root_comp,
     outer_shell_body,
@@ -3887,6 +4124,12 @@ def extrude_outer_shell_lid_gap_extension_region(
     )
     if updated_outer_shell_body is None:
         updated_outer_shell_body = current_outer_shell_body
+    add_outer_shell_lid_gap_extension_fillet(
+        root_comp,
+        updated_outer_shell_body,
+        sketch,
+        plane,
+    )
     return updated_outer_shell_body
 
 
