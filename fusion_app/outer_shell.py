@@ -11,6 +11,9 @@ except ImportError:
     import naming
 
 
+OUTER_SHELL_SCRIPT_REVISION = '2026-05-21-l-button-opening-y32-cut'
+
+
 OUTER_CIRCLE_CENTER_MM = (-42.0, 5.0)
 OUTER_CIRCLE_RADIUS_MM = 33.0
 INNER_SHELL_TOP_EDGE_START_MM = (-66.67, 26.918)
@@ -34,6 +37,43 @@ OUTER_SHELL_BOTTOM_OUTER_SKETCH_NAME = '外殻底面外側'
 OUTER_SHELL_BOTTOM_OUTER_SKETCH_Z_MM = -3.2
 OUTER_SHELL_BOTTOM_OUTER_REGION_TARGET_MM = (-60.0, 0.0, 0.0)
 OUTER_SHELL_BOTTOM_OUTER_REGION_EXTRUDE_DISTANCE_MM = -2.8
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_SKETCH_NAME = '外殻底部外側斜面'
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_SKETCH_NAME = '外殻底部外側斜面 Yカット'
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_SKETCH_NAME = '外殻底部外側斜面 三角カット'
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_SKETCH_Z_MM = -3.2
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_CENTER_MM = (0.0, 5.0, -3.2)
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_DIAMETER_MM = 55.0
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_POINTS_MM = {
+    'A': (-25.0, 30.0, -3.2),
+    'C': (-3.159, -23.2, -3.2),
+    'D': (-29.854, -25.9, -3.2),
+    'E': (-29.854, 29.638, -3.2),
+    'F_PRIME': (0.0, -22.5, -3.2),
+    'G': (0.0, -23.2, -3.2),
+    'H': (-19.445, 24.445, -3.2),
+}
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_PROFILE_TARGET_MM = (-20.0, 10.0, -3.2)
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_PROFILE_FALLBACK_TARGETS_MM = (
+    (-20.0, 10.0, -3.2),
+    (-22.0, 0.0, -3.2),
+    (-24.0, -5.0, -3.2),
+)
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_EXTRUDE_DISTANCE_MM = 2.8
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_POINTS_MM = {
+    'I': (0.0, -23.2, -6.0),
+    'J': (-3.159, -23.2, -6.0),
+    'K': (0.0, -23.2, -5.0),
+    'L': (-3.159, -23.2, -5.0),
+}
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_PROFILE_TARGET_MM = (-1.5, -23.2, -5.5)
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_DISTANCE_MM = 5.0
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_POINTS_MM = {
+    'J': (-3.159, -23.2, -6.0),
+    'L': (-3.159, -23.2, -5.0),
+    'M': (-5.0, -23.386, -4.927),
+    'O': (-29.854, -25.9, -6.0),
+}
+OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_DISTANCE_MM = 70.0
 OUTER_SHELL_BOTTOM_OUTER_FILLET_RADIUS_MM = 3.0
 OUTER_SHELL_BOTTOM_OUTER_FILLET_Z_MM = -6.0
 OUTER_SHELL_BOTTOM_OUTER_FILLET_REFERENCE_POINTS_MM = (
@@ -50,9 +90,67 @@ OUTER_SHELL_LID_GAP_PLANE_NAME = '外殻蓋部斜面隙間部'
 OUTER_SHELL_LID_GAP_PLANE_Z_OFFSET_MM = 0.2
 OUTER_SHELL_LID_GAP_SKETCH_NAME = '外殻蓋部斜面隙間部'
 OUTER_SHELL_LID_GAP_EXTRUDE_DISTANCE_MM = 3.0
-OUTER_SHELL_LID_GAP_EXTENSION_EXTRUDE_DISTANCE_MM = 5.0
+OUTER_SHELL_LID_GAP_EXTENSION_EXTRUDE_DISTANCE_MM = 3.0
 OUTER_SHELL_LID_GAP_EXTENSION_FILLET_RADIUS_MM = 3.0
 OUTER_SHELL_LID_OUTER_SLOPE_FACE_NAME = '外殻蓋部斜面外側'
+OUTER_SHELL_LID_DECORATION_CUT_1_SKETCH_NAME = '蓋部装飾切取り①'
+OUTER_SHELL_LID_DECORATION_CUT_1_PLANE_NAME = '蓋部装飾切取り①平面'
+OUTER_SHELL_LID_DECORATION_CUT_1_PLANE_X_MM = -41.895
+OUTER_SHELL_LID_DECORATION_CUT_1_POINT_O_MM = (-41.895, 5.271, 27.384)
+OUTER_SHELL_LID_DECORATION_CUT_1_POINT_P_MM = (-41.895, 6.363, 14.251)
+OUTER_SHELL_LID_DECORATION_CUT_1_POINT_A_MM = (-41.895, -29.397, 27.803)
+OUTER_SHELL_LID_DECORATION_CUT_1_POINT_B_MM = (-41.895, -23.70, 27.803)
+OUTER_SHELL_LID_DECORATION_CUT_1_POINT_C_MM = (-41.895, -23.70, 18.993)
+OUTER_SHELL_LID_DECORATION_CUT_1_PROFILE_TARGET_MM = (
+    -41.895,
+    (-29.397 - 23.70 - 23.70) / 3.0,
+    (27.803 + 27.803 + 18.993) / 3.0,
+)
+OUTER_SHELL_LID_DECORATION_CUT_1_POSITIVE_ANGLE_DEG = 150.0
+OUTER_SHELL_LID_DECORATION_CUT_1_NEGATIVE_ANGLE_DEG = 120.0
+OUTER_SHELL_LID_DECORATION_CUT_2_REFERENCE_SKETCH_NAME = '蓋部装飾切取り② 基準'
+OUTER_SHELL_LID_DECORATION_CUT_2_PLANE_NAME = '蓋部装飾切取り②平面'
+OUTER_SHELL_LID_DECORATION_CUT_2_SKETCH_NAME = '蓋部装飾切取り②'
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_D_MM = (-68.493, 20.575, 26.655)
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_E_MM = (-57.635, 23.421, 28.892)
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_F_MM = (-62.792, 22.068, 28.779)
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_G_MM = (-62.227, 19.909, 28.60)
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_H_MM = (-62.53, 21.059, 31.03)
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_I_MM = (-63.354, 24.182, 31.29)
+OUTER_SHELL_LID_DECORATION_CUT_2_POINT_J_MM = (-62.736, 21.838, 22.942)
+OUTER_SHELL_LID_DECORATION_CUT_2_PLANE_ANGLE_DEG = 90.0
+OUTER_SHELL_LID_DECORATION_CUT_2_NEGATIVE_X_DISTANCE_MM = 6.111
+OUTER_SHELL_LID_DECORATION_CUT_2_POSITIVE_X_DISTANCE_MM = 5.356
+OUTER_SHELL_LID_DECORATION_CUT_2_PROFILE_TARGET_MM = (
+    (-62.53 - 63.354 - 62.736) / 3.0,
+    (21.059 + 24.182 + 21.838) / 3.0,
+    (31.03 + 31.29 + 22.942) / 3.0,
+)
+OUTER_SHELL_LID_DECORATION_CUT_3_SKETCH_1_NAME = '蓋部装飾切取り③ 断面1'
+OUTER_SHELL_LID_DECORATION_CUT_3_SKETCH_2_NAME = '蓋部装飾切取り③ 断面2'
+OUTER_SHELL_LID_DECORATION_CUT_3_POINT_A_PRIME_MM = (-68.764, 20.73, 28.668)
+OUTER_SHELL_LID_DECORATION_CUT_3_POINT_B_PRIME_MM = (-68.841, 21.023, 25.693)
+OUTER_SHELL_LID_DECORATION_CUT_3_POINT_C_PRIME_MM = (-70.262, 21.593, 28.74)
+OUTER_SHELL_LID_DECORATION_CUT_3_POINT_H_PRIME_MM = (-69.076, 21.914, 28.767)
+OUTER_SHELL_LID_DECORATION_CUT_4_SKETCH_NAME = '蓋部装飾切取り④'
+OUTER_SHELL_LID_DECORATION_CUT_4_POINT_K_MM = (-58.50, 26.698, 29.164)
+OUTER_SHELL_LID_DECORATION_CUT_4_POINT_L_MM = (-58.50, 26.391, 32.856)
+OUTER_SHELL_LID_DECORATION_CUT_4_POINT_M_MM = (-58.047, 25.063, 29.562)
+OUTER_SHELL_LID_DECORATION_CUT_4_POINT_N_MM = (-57.505, 23.005, 22.232)
+OUTER_SHELL_LID_DECORATION_CUT_4_POINT_Q_MM = (-57.504, 23.005, 29.289)
+OUTER_SHELL_LID_DECORATION_CUT_4_REVOLVE_ANGLE_DEG = -120.0
+OUTER_SHELL_LID_DECORATION_CUT_4_EXTRUDE_DISTANCE_MM = 1.0
+OUTER_SHELL_LID_DECORATION_CUT_4_PROFILE_TARGET_MM = (
+    (-58.047 - 57.505 - 57.504) / 3.0,
+    (25.063 + 23.005 + 23.005) / 3.0,
+    (29.562 + 22.232 + 29.289) / 3.0,
+)
+OUTER_SHELL_LID_DECORATION_CUT_5_SKETCH_NAME = '蓋部装飾切取り⑤'
+OUTER_SHELL_LID_DECORATION_CUT_5_POINT_X_MM = (-57.425, 27.747, 30.067)
+OUTER_SHELL_LID_DECORATION_CUT_5_POINT_Y_MM = (-55.067, 30.513, 21.989)
+OUTER_SHELL_LID_DECORATION_CUT_5_POINT_Z_MM = (-54.852, 30.297, 30.067)
+OUTER_SHELL_LID_DECORATION_CUT_5_POSITIVE_DISTANCE_MM = 20.0
+OUTER_SHELL_LID_DECORATION_CUT_5_NEGATIVE_DISTANCE_MM = 1.0
 OUTER_SHELL_LID_GAP_CIRCLE_L_RADIUS_MM = 3.4
 OUTER_SHELL_LID_GAP_POINT_A_MM = (-90.0, 32.2, 26.621)
 OUTER_SHELL_LID_GAP_POINT_B_MM = (-90.0, -35.0, 21.037)
@@ -66,6 +164,53 @@ OUTER_SHELL_LID_GAP_POINT_I_MM = (-41.943, 5.298, 24.386)
 OUTER_SHELL_LID_YZ_CUT_PLANE_NAME = '外殻蓋部YZ切り取り平面'
 OUTER_SHELL_LID_YZ_CUT_PLANE_X_MM = -29.854
 OUTER_SHELL_BASE_STRUCTURE_SKETCH_NAME = '外殻基準構造'
+OUTER_SHELL_LOWER_STOP_SKETCH_1_NAME = '外殻下部受止 スケッチ1'
+OUTER_SHELL_LOWER_STOP_SKETCH_2_NAME = '外殻下部受止 スケッチ2'
+OUTER_SHELL_LOWER_STOP_SKETCH_3_NAME = '外殻下部受止 スケッチ3'
+OUTER_SHELL_LOWER_STOP_SKETCH_4_NAME = '外殻下部受止 スケッチ4'
+OUTER_SHELL_LOWER_STOP_SKETCH_5_NAME = '外殻下部受止 スケッチ5'
+OUTER_SHELL_LOWER_STOP_SUPPORT_SKETCH_NAME = '外殻下部受止 押し出し先'
+OUTER_SHELL_LOWER_STOP_LOFT_SKETCH_NAME = '外殻下部受止 ロフト2'
+OUTER_SHELL_LOWER_STOP_EXTRUDE_DISTANCE_MM = 5.0
+OUTER_SHELL_LOWER_STOP_BHIJ_CUT_DISTANCE_MM = 6.0
+OUTER_SHELL_LOWER_STOP_BHIJ_CUT_TAPER_ANGLE_DEG = 10.0
+OUTER_SHELL_LOWER_STOP_FILLET_RADIUS_MM = 3.0
+OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM = 8.2
+OUTER_SHELL_LOWER_STOP_ARC_POSITIVE_Z_CUT_DISTANCE_MM = 5.0
+OUTER_SHELL_LOWER_STOP_CIRCLE_POSITIVE_Z_CUT_DISTANCE_MM = 30.0
+OUTER_SHELL_LOWER_STOP_SKETCH1_POINTS_MM = {
+    'A': (-29.854, -35.00, 24.037),
+    'B': (-29.854, -25.9, 24.794),
+    'C': (-29.854, -35.00, -6.0),
+    'D': (-29.854, -25.9, -6.0),
+}
+OUTER_SHELL_LOWER_STOP_SKETCH2_POINTS_MM = {
+    'E': (-29.854, 29.638, -6.0),
+    'F': (-28.706, 29.638, -3.2),
+    'G': (-29.854, -25.9, -3.2),
+}
+OUTER_SHELL_LOWER_STOP_SKETCH3_POINTS_MM = {
+    'H': (-28.706, -22.709, 25.059),
+    'I': (-28.706, -22.709, 22.059),
+    'J': (-29.854, -25.9, 21.794),
+}
+OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM = {
+    'K': (-9.703, -24.217, 5.0),
+    'L': (-9.703, -19.664, 5.0),
+    'M': (-28.967, -22.556, 5.0),
+    'N': (-30.161, -25.679, 5.0),
+    'O': (-21.0, -10.0, 5.0),
+    'P': (-10.0, -20.198, 5.0),
+}
+OUTER_SHELL_LOWER_STOP_SKETCH5_POINTS_MM = {
+    'Q': (0.0, -25.2, 9.2),
+    'R': (0.0, -25.2, -5.0),
+    'S': (0.0, -23.2, -5.0),
+    'T': (0.0, -23.2, 7.2),
+    'U': (0.0, -20.0, 7.2),
+    'V': (0.0, -20.0, 9.2),
+    'W': (0.0, -23.2, 9.2),
+}
 OUTER_SHELL_END_CUT_SKETCH_NAME = '外殻端修正'
 OUTER_SHELL_L_BUTTON_OPENING_SKETCH_NAME = '外殻Lボタン開口部'
 OUTER_SHELL_END_CUT_POINT_A_MM = (-51.8, 35.0, 26.654)
@@ -104,6 +249,41 @@ OUTER_SHELL_FITTING_ADJUSTMENT_PROFILE_TARGET_MM = (
     9.28525,
 )
 OUTER_SHELL_FITTING_ADJUSTMENT_CUT_DISTANCE_MM = 0.2
+OUTER_SHELL_FITTING_CORRECTION_SKETCH_NAME = '外殻はめ込み修正'
+OUTER_SHELL_FITTING_CORRECTION_POINTS_MM = {
+    'O': (-29.854, 7.499, -3.2),
+    'P': (-26.981, -30.932, -3.2),
+    'Q': (-44.625, -28.096, -3.2),
+    'R': (-27.386, 7.499, -3.2),
+}
+OUTER_SHELL_FITTING_CORRECTION_PROFILE_TARGET_MM = (
+    -32.2115,
+    -11.0075,
+    -3.2,
+)
+OUTER_SHELL_FITTING_CORRECTION_CUT_DISTANCE_MM = 25.0
+OUTER_SHELL_FITTING_CORRECTION_A_FACE_POINTS_MM = (
+    (-26.981, -30.932, 21.80),
+    (-26.981, -30.932, -3.2),
+    (-27.057, -23.723, 21.80),
+)
+OUTER_SHELL_FITTING_CORRECTION_A_SECTION_SKETCH_NAME = '外殻はめ込み修正 A断面'
+OUTER_SHELL_FITTING_CORRECTION_A_PROFILE_TARGET_MM = (
+    -27.006333333333334,
+    -28.529,
+    13.466666666666667,
+)
+OUTER_SHELL_FITTING_CORRECTION_B_FACE_POINTS_MM = (
+    (-9.703, -21.116, 9.859),
+    (-9.703, -24.217, -3.2),
+    (-9.703, -24.217, 10.0),
+)
+OUTER_SHELL_FITTING_CORRECTION_B_SECTION_SKETCH_NAME = '外殻はめ込み修正 B断面'
+OUTER_SHELL_FITTING_CORRECTION_B_PROFILE_TARGET_MM = (
+    -9.703,
+    -23.183333333333334,
+    5.553,
+)
 OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_START_MM = (-55.748, 35.0, 0.0)
 OUTER_SHELL_L_BUTTON_OPENING_REFERENCE_END_MM = (-66.477, 27.133, 0.0)
 OUTER_SHELL_L_BUTTON_OPENING_LINE_C_MM = (-51.8, 28.218, 0.0)
@@ -160,6 +340,15 @@ OUTER_SHELL_L_BUTTON_OPENING_FILLET_REFERENCE_POINTS_MM = (
 )
 OUTER_SHELL_L_BUTTON_OPENING_FILLET_RADIUS_MM = 6.0
 OUTER_SHELL_L_BUTTON_OPENING_CUT_DISTANCE_MM = 10.0
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_SKETCH_NAME = '外殻Lボタン開口部 追加'
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PLANE_NAME = '外殻Lボタン開口部 追加平面'
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PLANE_Y_MM = 32.20
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_A_MM = (-57.80, 32.20, 24.966)
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_B_MM = (-57.80, 32.20, 0.0)
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_C_MM = (-61.254, 32.20, 19.887)
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_D_MM = (-61.254, 32.20, 12.80)
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PROFILE_TARGET_MM = (-59.8, 32.20, 14.5)
+OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_DISTANCE_MM = 15.0
 INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM = (
     (-63.701, -27.138, 25.8),
     (-62.178, -22.954, 25.452),
@@ -185,6 +374,38 @@ def create_sketch_point(sketch, point_mm):
 
 def to_sketch_space(sketch, point_mm):
     return sketch.modelToSketchSpace(create_point_mm(*point_mm))
+
+
+def offset_point_x_mm(point_mm, offset_x_mm):
+    return (
+        point_mm[0] + offset_x_mm,
+        point_mm[1],
+        point_mm[2],
+    )
+
+
+def create_reference_sketch_point(root_comp, point_mm, name=None):
+    plane = create_offset_plane_from_xy(root_comp, point_mm[2])
+    sketch = root_comp.sketches.add(plane)
+    if name:
+        sketch.name = name
+    return sketch.sketchPoints.add(
+        sketch.modelToSketchSpace(create_point_mm(*point_mm))
+    )
+
+
+def create_plane_by_three_points(root_comp, point_a_mm, point_b_mm, point_c_mm, name=None):
+    point_a = create_reference_sketch_point(root_comp, point_a_mm)
+    point_b = create_reference_sketch_point(root_comp, point_b_mm)
+    point_c = create_reference_sketch_point(root_comp, point_c_mm)
+
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByThreePoints(point_a, point_b, point_c)
+    plane = planes.add(plane_input)
+    if name:
+        plane.name = name
+    return plane
 
 
 def point3d_to_mm_tuple(point):
@@ -531,6 +752,80 @@ def find_planar_face_through_points(body, point_list_mm, tolerance_cm):
     return min(candidate_faces, key=lambda item: (item[1], -item[0].area))[0]
 
 
+def find_best_planar_face_for_points(body, point_list_mm, min_alignment=0.9):
+    target_points = [create_point_mm(*point_mm) for point_mm in point_list_mm]
+    if len(target_points) < 3:
+        raise RuntimeError('平面面の判定には3点以上が必要です。')
+
+    point_a = target_points[0]
+    point_b = target_points[1]
+    point_c = target_points[2]
+    vector_ab = adsk.core.Vector3D.create(
+        point_b.x - point_a.x,
+        point_b.y - point_a.y,
+        point_b.z - point_a.z,
+    )
+    vector_ac = adsk.core.Vector3D.create(
+        point_c.x - point_a.x,
+        point_c.y - point_a.y,
+        point_c.z - point_a.z,
+    )
+    reference_normal = vector_ab.crossProduct(vector_ac)
+    if reference_normal.length <= 1e-9:
+        raise RuntimeError('指定点から基準平面を決定できませんでした。')
+    reference_normal.normalize()
+
+    candidate_faces = []
+
+    for face in get_face_collection(body):
+        geometry = adsk.core.Plane.cast(face.geometry)
+        if not geometry:
+            continue
+
+        face_normal = geometry.normal.copy()
+        if face_normal.length <= 1e-9:
+            continue
+        face_normal.normalize()
+
+        alignment = abs(face_normal.dotProduct(reference_normal))
+        if alignment < min_alignment:
+            continue
+
+        box = face.boundingBox
+        score = (1.0 - alignment) * 100.0
+        for point in target_points:
+            signed_distance = abs(
+                face_normal.x * (point.x - geometry.origin.x)
+                + face_normal.y * (point.y - geometry.origin.y)
+                + face_normal.z * (point.z - geometry.origin.z)
+            )
+            score += signed_distance
+
+            dx = 0.0
+            dy = 0.0
+            dz = 0.0
+            if point.x < box.minPoint.x:
+                dx = box.minPoint.x - point.x
+            elif point.x > box.maxPoint.x:
+                dx = point.x - box.maxPoint.x
+            if point.y < box.minPoint.y:
+                dy = box.minPoint.y - point.y
+            elif point.y > box.maxPoint.y:
+                dy = point.y - box.maxPoint.y
+            if point.z < box.minPoint.z:
+                dz = box.minPoint.z - point.z
+            elif point.z > box.maxPoint.z:
+                dz = point.z - box.maxPoint.z
+            score += dx + dy + dz
+
+        candidate_faces.append((face, score))
+
+    if not candidate_faces:
+        raise RuntimeError('指定点近傍の平面面を取得できませんでした。')
+
+    return min(candidate_faces, key=lambda item: (item[1], -item[0].area))[0]
+
+
 def find_largest_xy_face_at_z_covering_point(body, point_mm, tolerance_cm):
     target_x = mm_to_cm(point_mm[0])
     target_y = mm_to_cm(point_mm[1])
@@ -675,6 +970,65 @@ def find_linear_edge_parallel_to_y_near_point(body, target_point_mm, tolerance_c
 
     if not candidate_edge:
         raise RuntimeError('指定条件に一致する Y 軸平行エッジを取得できませんでした。')
+
+    return candidate_edge
+
+
+def find_linear_edge_parallel_to_x_near_point(body, target_point_mm, tolerance_cm=1e-5):
+    target_point = create_point_mm(*target_point_mm)
+    candidate_edge = None
+    candidate_score = None
+    fallback_edge = None
+    fallback_score = None
+
+    for edge in body.edges:
+        line = adsk.core.Line3D.cast(edge.geometry)
+        if not line:
+            continue
+
+        start_vertex = edge.startVertex
+        end_vertex = edge.endVertex
+        if not start_vertex or not end_vertex:
+            continue
+
+        start_point = start_vertex.geometry
+        end_point = end_vertex.geometry
+        if not start_point or not end_point:
+            continue
+
+        delta_x = end_point.x - start_point.x
+        delta_y = end_point.y - start_point.y
+        delta_z = end_point.z - start_point.z
+        if abs(delta_y) > tolerance_cm or abs(delta_z) > tolerance_cm or abs(delta_x) <= tolerance_cm:
+            continue
+
+        try:
+            score = get_nearest_distance_to_edge(edge, target_point)
+        except RuntimeError:
+            continue
+        if fallback_score is None or score < fallback_score:
+            fallback_score = score
+            fallback_edge = edge
+
+        box = edge.boundingBox
+        if (
+            target_point.x < box.minPoint.x - tolerance_cm
+            or target_point.x > box.maxPoint.x + tolerance_cm
+            or target_point.y < box.minPoint.y - tolerance_cm
+            or target_point.y > box.maxPoint.y + tolerance_cm
+            or target_point.z < box.minPoint.z - tolerance_cm
+            or target_point.z > box.maxPoint.z + tolerance_cm
+        ):
+            continue
+
+        if candidate_score is None or score < candidate_score:
+            candidate_score = score
+            candidate_edge = edge
+
+    if not candidate_edge:
+        if fallback_edge is not None:
+            return fallback_edge
+        raise RuntimeError('指定条件に一致する X 軸平行エッジを取得できませんでした。')
 
     return candidate_edge
 
@@ -1166,11 +1520,43 @@ def clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve):
             fit_points.add(point)
         return splines.add(fit_points)
 
+    geometry = get_curve_geometry(sketch_curve)
+    if geometry:
+        evaluator = geometry.evaluator
+        success, start_param, end_param = evaluator.getParameterExtents()
+        if success:
+            fit_points = adsk.core.ObjectCollection.create()
+            sample_count = 24
+            for index in range(sample_count + 1):
+                parameter = start_param + ((end_param - start_param) * index / sample_count)
+                success, point = evaluator.getPointAtParameter(parameter)
+                if not success:
+                    continue
+                fit_points.add(point)
+            if fit_points.count >= 2:
+                return splines.add(fit_points)
+
     raise RuntimeError('未対応の断面カーブ種類です。')
 
 
 def project_inner_shell_section_to_sketch(sketch, inner_shell_body):
     projected_entities = sketch.intersectWithSketchPlane([inner_shell_body])
+    projected_curves = []
+
+    for entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(entity)
+        if sketch_curve:
+            projected_curves.append(sketch_curve)
+
+    for sketch_curve in projected_curves:
+        clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve)
+
+    for sketch_curve in projected_curves:
+        sketch_curve.deleteMe()
+
+
+def project_body_section_to_sketch(sketch, body):
+    projected_entities = sketch.intersectWithSketchPlane([body])
     projected_curves = []
 
     for entity in projected_entities:
@@ -1588,6 +1974,49 @@ def point_on_circle_from_angle_mm(center_mm, radius_mm, angle_rad):
     )
 
 
+def get_tangent_arc_midpoint_at_endpoint_mm(start_point_mm, tangent_point_mm, tangent_line_point_mm):
+    tangent_direction_mm = subtract_points_2d_mm(
+        tangent_line_point_mm,
+        tangent_point_mm,
+    )
+    tangent_length_mm = math.hypot(
+        tangent_direction_mm[0],
+        tangent_direction_mm[1],
+    )
+    if tangent_length_mm <= 1e-9:
+        raise RuntimeError('接線方向が退化しているため円弧中点を計算できませんでした。')
+
+    chord_direction_mm = subtract_points_2d_mm(
+        tangent_point_mm,
+        start_point_mm,
+    )
+    chord_length_mm = math.hypot(
+        chord_direction_mm[0],
+        chord_direction_mm[1],
+    )
+    if chord_length_mm <= 1e-9:
+        raise RuntimeError('円弧端点が重複しているため円弧中点を計算できませんでした。')
+
+    chord_midpoint_mm = get_midpoint_mm(start_point_mm, tangent_point_mm)
+    center_mm = intersect_lines_2d_mm(
+        tangent_point_mm,
+        (
+            tangent_point_mm[0] - tangent_direction_mm[1],
+            tangent_point_mm[1] + tangent_direction_mm[0],
+        ),
+        chord_midpoint_mm,
+        (
+            chord_midpoint_mm[0] - chord_direction_mm[1],
+            chord_midpoint_mm[1] + chord_direction_mm[0],
+        ),
+    )
+    radius_mm = get_distance_2d_mm(center_mm, start_point_mm)
+    start_angle_rad = angle_for_point_on_circle_mm(center_mm, start_point_mm)
+    end_angle_rad = angle_for_point_on_circle_mm(center_mm, tangent_point_mm)
+    midpoint_angle = midpoint_angle_rad(start_angle_rad, end_angle_rad)
+    return point_on_circle_from_angle_mm(center_mm, radius_mm, midpoint_angle)
+
+
 def angle_for_point_on_circle_mm(center_mm, point_mm):
     return math.atan2(
         point_mm[1] - center_mm[1],
@@ -1774,6 +2203,52 @@ def cut_body_with_inner_shell(root_comp, target_body, inner_shell_body):
     combine_input.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
     combine_input.isKeepToolBodies = True
     combine_features.add(combine_input)
+
+
+def cut_target_body_with_tool_bodies(root_comp, target_body, tool_bodies, keep_tool_bodies=False):
+    if target_body is None:
+        raise RuntimeError('target_body is required.')
+
+    if not tool_bodies:
+        return target_body
+
+    tool_body_collection = adsk.core.ObjectCollection.create()
+    for tool_body in tool_bodies:
+        if tool_body is not None:
+            tool_body_collection.add(tool_body)
+
+    if tool_body_collection.count == 0:
+        return target_body
+
+    combine_features = root_comp.features.combineFeatures
+    combine_input = combine_features.createInput(target_body, tool_body_collection)
+    combine_input.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
+    combine_input.isKeepToolBodies = keep_tool_bodies
+    combine_features.add(combine_input)
+    return target_body
+
+
+def join_tool_bodies_into_target(root_comp, target_body, tool_bodies, keep_tool_bodies=False):
+    if target_body is None:
+        raise RuntimeError('target_body is required.')
+
+    if not tool_bodies:
+        return target_body
+
+    tool_body_collection = adsk.core.ObjectCollection.create()
+    for tool_body in tool_bodies:
+        if tool_body is not None:
+            tool_body_collection.add(tool_body)
+
+    if tool_body_collection.count == 0:
+        return target_body
+
+    combine_features = root_comp.features.combineFeatures
+    combine_input = combine_features.createInput(target_body, tool_body_collection)
+    combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+    combine_input.isKeepToolBodies = keep_tool_bodies
+    combine_features.add(combine_input)
+    return target_body
 
 
 def extrude_outer_shell_profile(root_comp, sketch, inner_shell_body):
@@ -2022,6 +2497,419 @@ def extrude_bottom_outer_region(root_comp, sketch):
         adsk.fusion.ExtentDirections.NegativeExtentDirection,
     )
     extrudes.add(extrude_input)
+
+
+def create_outer_shell_bottom_outer_slope_sketch(root_comp):
+    sketch_plane = create_offset_plane_from_xy(
+        root_comp,
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_SKETCH_Z_MM,
+    )
+    sketch = root_comp.sketches.add(sketch_plane)
+    sketch.name = OUTER_SHELL_BOTTOM_OUTER_SLOPE_SKETCH_NAME
+
+    points_mm = OUTER_SHELL_BOTTOM_OUTER_SLOPE_POINTS_MM
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+
+    local_points_mm = {
+        name: (point_mm[0], point_mm[1], 0.0)
+        for name, point_mm in points_mm.items()
+    }
+
+    circle_center_mm = (
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_CENTER_MM[0],
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_CENTER_MM[1],
+    )
+    radius_mm = OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_DIAMETER_MM / 2.0
+    point_h_on_circle_xy_mm = offset_point_from_circle(
+        circle_center_mm,
+        (points_mm['H'][0], points_mm['H'][1]),
+        radius_mm - get_distance_2d_mm(circle_center_mm, (points_mm['H'][0], points_mm['H'][1])),
+    )
+    point_h_on_circle_mm = (
+        point_h_on_circle_xy_mm[0],
+        point_h_on_circle_xy_mm[1],
+        0.0,
+    )
+    angle_h_rad = angle_for_point_on_circle_mm(circle_center_mm, point_h_on_circle_xy_mm)
+    angle_f_prime_rad = angle_for_point_on_circle_mm(
+        circle_center_mm,
+        (local_points_mm['F_PRIME'][0], local_points_mm['F_PRIME'][1]),
+    )
+    arc_midpoint_mm = point_on_circle_from_angle_mm(
+        circle_center_mm,
+        radius_mm,
+        midpoint_angle_rad(angle_h_rad, angle_f_prime_rad),
+    )
+    arc_midpoint_model_mm = (
+        arc_midpoint_mm[0],
+        arc_midpoint_mm[1],
+        0.0,
+    )
+
+    lines.addByTwoPoints(
+        create_point_in_sketch_space_mm(local_points_mm['A'][0], local_points_mm['A'][1]),
+        create_point_in_sketch_space_mm(point_h_on_circle_mm[0], point_h_on_circle_mm[1]),
+    )
+    arcs.addByThreePoints(
+        create_point_in_sketch_space_mm(point_h_on_circle_mm[0], point_h_on_circle_mm[1]),
+        create_point_in_sketch_space_mm(arc_midpoint_model_mm[0], arc_midpoint_model_mm[1]),
+        create_point_in_sketch_space_mm(local_points_mm['F_PRIME'][0], local_points_mm['F_PRIME'][1]),
+    )
+    lines.addByTwoPoints(
+        create_point_in_sketch_space_mm(local_points_mm['F_PRIME'][0], local_points_mm['F_PRIME'][1]),
+        create_point_in_sketch_space_mm(local_points_mm['G'][0], local_points_mm['G'][1]),
+    )
+    lines.addByTwoPoints(
+        create_point_in_sketch_space_mm(local_points_mm['G'][0], local_points_mm['G'][1]),
+        create_point_in_sketch_space_mm(local_points_mm['C'][0], local_points_mm['C'][1]),
+    )
+    lines.addByTwoPoints(
+        create_point_in_sketch_space_mm(local_points_mm['C'][0], local_points_mm['C'][1]),
+        create_point_in_sketch_space_mm(local_points_mm['D'][0], local_points_mm['D'][1]),
+    )
+    lines.addByTwoPoints(
+        create_point_in_sketch_space_mm(local_points_mm['D'][0], local_points_mm['D'][1]),
+        create_point_in_sketch_space_mm(local_points_mm['E'][0], local_points_mm['E'][1]),
+    )
+    lines.addByTwoPoints(
+        create_point_in_sketch_space_mm(local_points_mm['E'][0], local_points_mm['E'][1]),
+        create_point_in_sketch_space_mm(local_points_mm['A'][0], local_points_mm['A'][1]),
+    )
+
+    for point_mm in (
+        local_points_mm['A'],
+        point_h_on_circle_mm,
+        local_points_mm['F_PRIME'],
+        local_points_mm['G'],
+        local_points_mm['C'],
+        local_points_mm['D'],
+        local_points_mm['E'],
+        (OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_CENTER_MM[0], OUTER_SHELL_BOTTOM_OUTER_SLOPE_CIRCLE_CENTER_MM[1], 0.0),
+        arc_midpoint_model_mm,
+    ):
+        sketch.sketchPoints.add(create_point_in_sketch_space_mm(point_mm[0], point_mm[1]))
+
+    return sketch
+
+
+def extrude_outer_shell_bottom_outer_slope_region(root_comp, sketch):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    profile = None
+    for target_point_mm in OUTER_SHELL_BOTTOM_OUTER_SLOPE_PROFILE_FALLBACK_TARGETS_MM:
+        try:
+            profile = get_profile_containing_point(
+                sketch,
+                to_sketch_space(sketch, target_point_mm),
+            )
+            break
+        except RuntimeError:
+            continue
+    if profile is None:
+        profile = get_profile_nearest_point(
+            sketch,
+            to_sketch_space(sketch, OUTER_SHELL_BOTTOM_OUTER_SLOPE_PROFILE_TARGET_MM),
+        )
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    if current_outer_shell_body is not None:
+        extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(OUTER_SHELL_BOTTOM_OUTER_SLOPE_EXTRUDE_DISTANCE_MM)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        adsk.fusion.ExtentDirections.NegativeExtentDirection,
+    )
+    extrudes.add(extrude_input)
+
+
+def create_outer_shell_bottom_outer_slope_y_cut_sketch(root_comp):
+    sketch_plane = create_offset_plane_from_xz(
+        root_comp,
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_POINTS_MM['I'][1],
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(sketch_plane)
+    sketch.name = OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_SKETCH_NAME
+
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_POINTS_MM,
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['I', 'J', 'L', 'K'])
+    return sketch
+
+
+def create_outer_shell_bottom_outer_slope_triangle_cut_sketch(root_comp):
+    triangle_points_mm = OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_POINTS_MM
+    plane = create_plane_by_three_points(
+        root_comp,
+        triangle_points_mm['J'],
+        triangle_points_mm['L'],
+        triangle_points_mm['O'],
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_SKETCH_NAME
+
+    plane_geometry = adsk.core.Plane.cast(plane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('外殻底部外側斜面 三角カット平面のジオメトリを取得できませんでした。')
+
+    projected_points_mm = {}
+    for name, point_mm in triangle_points_mm.items():
+        point = create_point_mm(*point_mm)
+        signed_distance = get_signed_distance_to_plane(plane_geometry, point)
+        normal = plane_geometry.normal
+        projected_points_mm[name] = (
+            point_mm[0] - (normal.x * signed_distance * 10.0),
+            point_mm[1] - (normal.y * signed_distance * 10.0),
+            point_mm[2] - (normal.z * signed_distance * 10.0),
+        )
+
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        projected_points_mm,
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['J', 'L', 'M', 'O'])
+    return sketch
+
+
+def cut_profile_via_negative_y_sweep(
+    root_comp,
+    sketch,
+    profile,
+    outer_shell_body,
+    cut_distance_mm,
+    inner_shell_body=None,
+):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    try:
+        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_OUTER_SHELL,
+        ) or current_outer_shell_body
+
+        centroid = sketch.sketchToModelSpace(profile.areaProperties().centroid)
+        path_plane = create_offset_plane_from_yz(root_comp, centroid.x * 10.0)
+        path_sketch = root_comp.sketches.add(path_plane)
+
+        start_point = path_sketch.modelToSketchSpace(centroid)
+        end_point = path_sketch.modelToSketchSpace(
+            adsk.core.Point3D.create(
+                centroid.x,
+                centroid.y - mm_to_cm(cut_distance_mm),
+                centroid.z,
+            )
+        )
+        path_line = path_sketch.sketchCurves.sketchLines.addByTwoPoints(
+            start_point,
+            end_point,
+        )
+        path = root_comp.features.createPath(path_line)
+
+        sweeps = root_comp.features.sweepFeatures
+        sweep_input = sweeps.createInput(
+            profile,
+            path,
+            adsk.fusion.FeatureOperations.CutFeatureOperation,
+        )
+        sweep_input.participantBodies = [current_outer_shell_body]
+        sweeps.add(sweep_input)
+    finally:
+        if moved_inner_shell_body is not None:
+            move_body_by_translation(
+                root_comp,
+                moved_inner_shell_body,
+                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+            )
+
+
+def create_body_via_negative_y_sweep(root_comp, sketch, profile, distance_mm):
+    centroid = sketch.sketchToModelSpace(profile.areaProperties().centroid)
+    path_plane = create_offset_plane_from_yz(root_comp, centroid.x * 10.0)
+    path_sketch = root_comp.sketches.add(path_plane)
+
+    start_point = path_sketch.modelToSketchSpace(centroid)
+    end_point = path_sketch.modelToSketchSpace(
+        adsk.core.Point3D.create(
+            centroid.x,
+            centroid.y - mm_to_cm(distance_mm),
+            centroid.z,
+        )
+    )
+    path_line = path_sketch.sketchCurves.sketchLines.addByTwoPoints(
+        start_point,
+        end_point,
+    )
+    path = root_comp.features.createPath(path_line)
+
+    sweeps = root_comp.features.sweepFeatures
+    sweep_input = sweeps.createInput(
+        profile,
+        path,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    )
+    feature = sweeps.add(sweep_input)
+    return get_body_from_feature(feature)
+
+
+def create_body_via_positive_y_sweep(root_comp, sketch, profile, distance_mm):
+    centroid = sketch.sketchToModelSpace(profile.areaProperties().centroid)
+    path_plane = create_offset_plane_from_yz(root_comp, centroid.x * 10.0)
+    path_sketch = root_comp.sketches.add(path_plane)
+
+    start_point = path_sketch.modelToSketchSpace(centroid)
+    end_point = path_sketch.modelToSketchSpace(
+        adsk.core.Point3D.create(
+            centroid.x,
+            centroid.y + mm_to_cm(distance_mm),
+            centroid.z,
+        )
+    )
+    path_line = path_sketch.sketchCurves.sketchLines.addByTwoPoints(
+        start_point,
+        end_point,
+    )
+    path = root_comp.features.createPath(path_line)
+
+    sweeps = root_comp.features.sweepFeatures
+    sweep_input = sweeps.createInput(
+        profile,
+        path,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    )
+    feature = sweeps.add(sweep_input)
+    return get_body_from_feature(feature)
+
+
+def extrude_outer_shell_bottom_outer_slope(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or outer_shell_body
+
+    slope_sketch = create_outer_shell_bottom_outer_slope_sketch(root_comp)
+    extrude_outer_shell_bottom_outer_slope_region(root_comp, slope_sketch)
+
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
+
+
+def cut_outer_shell_bottom_outer_slope_regions(root_comp, outer_shell_body, inner_shell_body=None):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    try:
+        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_OUTER_SHELL,
+        ) or current_outer_shell_body
+
+        y_cut_sketch = create_outer_shell_bottom_outer_slope_y_cut_sketch(root_comp)
+        y_cut_profile = get_profile_containing_point(
+            y_cut_sketch,
+            to_sketch_space(y_cut_sketch, OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_PROFILE_TARGET_MM),
+        )
+        y_cut_body = create_body_via_positive_y_sweep(
+            root_comp,
+            y_cut_sketch,
+            y_cut_profile,
+            OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_DISTANCE_MM,
+        )
+        current_outer_shell_body = cut_target_body_with_tool_bodies(
+            root_comp,
+            current_outer_shell_body,
+            [y_cut_body],
+        )
+
+        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_OUTER_SHELL,
+        ) or current_outer_shell_body
+        triangle_cut_sketch = create_outer_shell_bottom_outer_slope_triangle_cut_sketch(root_comp)
+        triangle_cut_profile = get_largest_profile(triangle_cut_sketch)
+        triangle_cut_body = create_body_via_positive_y_sweep(
+            root_comp,
+            triangle_cut_sketch,
+            triangle_cut_profile,
+            OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_DISTANCE_MM,
+        )
+        current_outer_shell_body = cut_target_body_with_tool_bodies(
+            root_comp,
+            current_outer_shell_body,
+            [triangle_cut_body],
+        )
+    finally:
+        if moved_inner_shell_body is not None:
+            move_body_by_translation(
+                root_comp,
+                moved_inner_shell_body,
+                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+            )
+
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
 
 
 def find_arc_edge_near_points_on_xy_plane(body, reference_points_mm, z_value_mm, tolerance_cm=1e-5):
@@ -2456,6 +3344,70 @@ def cut_profile_in_negative_y(root_comp, face, profile, outer_shell_body, inner_
         )
 
 
+def cut_profile_in_negative_y_from_sketch(
+    root_comp,
+    sketch,
+    profile,
+    outer_shell_body,
+    inner_shell_body=None,
+    cut_distance_mm=None,
+):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('Y 方向カット対象スケッチ平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal
+    direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if normal.y > 0.0:
+        direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    if cut_distance_mm is None:
+        cut_distance_mm = OUTER_SHELL_L_BUTTON_OPENING_CUT_DISTANCE_MM
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(cut_distance_mm)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+    if moved_inner_shell_body is not None:
+        move_body_by_translation(
+            root_comp,
+            moved_inner_shell_body,
+            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+
 def cut_xz_face_in_negative_y(root_comp, face, outer_shell_body, distance_mm, inner_shell_body=None, tolerance=1e-6):
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
@@ -2600,6 +3552,98 @@ def cut_profile_in_positive_x(root_comp, face, profile, outer_shell_body, cut_di
     extrudes.add(extrude_input)
 
 
+def extrude_profile_in_negative_x(root_comp, face, profile, outer_shell_body, distance_mm):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    geometry = adsk.core.Plane.cast(face.geometry)
+    if not geometry:
+        raise RuntimeError('X 方向押し出し対象面の平面ジオメトリを取得できませんでした。')
+
+    normal = geometry.normal
+    direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    if normal.x < 0.0:
+        direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(distance_mm)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+
+def extrude_profile_in_negative_x_from_sketch(root_comp, sketch, profile, outer_shell_body, distance_mm):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('X 方向押し出し対象スケッチ平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal
+    direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    if normal.x < 0.0:
+        direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(distance_mm)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+
+def extrude_profile_in_negative_x_from_sketch_new_body(root_comp, sketch, profile, distance_mm):
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('X 方向押し出し対象スケッチ平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal
+    direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    if normal.x < 0.0:
+        direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    )
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(distance_mm)
+    )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    feature = extrudes.add(extrude_input)
+    return get_body_from_feature(feature)
+
+
 def extrude_profile_in_positive_x(root_comp, face, profile, outer_shell_body, distance_mm):
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
@@ -2626,6 +3670,125 @@ def extrude_profile_in_positive_x(root_comp, face, profile, outer_shell_body, di
     distance_value = adsk.core.ValueInput.createByReal(
         mm_to_cm(distance_mm)
     )
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+
+def cut_profile_in_positive_x_from_sketch_with_taper(
+    root_comp,
+    sketch,
+    profile,
+    outer_shell_body,
+    cut_distance_mm,
+    taper_angle_deg,
+):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('X 方向テーパー切り取り対象スケッチ平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal
+    direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    if normal.x < 0.0:
+        direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(mm_to_cm(cut_distance_mm))
+    taper_angle_value = adsk.core.ValueInput.createByString(
+        '{} deg'.format(taper_angle_deg)
+    )
+    extent_definition = adsk.fusion.DistanceExtentDefinition.create(distance_value)
+
+    try:
+        extrude_input.setOneSideExtent(
+            extent_definition,
+            direction,
+            taper_angle_value,
+        )
+    except TypeError:
+        extrude_input.setOneSideExtent(
+            extent_definition,
+            direction,
+        )
+        if hasattr(extrude_input, 'taperAngle'):
+            extrude_input.taperAngle = taper_angle_value
+        elif hasattr(extrude_input, 'taperAngleOne'):
+            extrude_input.taperAngleOne = taper_angle_value
+        else:
+            raise RuntimeError('テーパー角度付き押し出し設定を適用できませんでした。')
+
+    extrudes.add(extrude_input)
+
+
+def cut_profile_in_negative_z(root_comp, sketch, profile, outer_shell_body, cut_distance_mm):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('Z 方向カット対象スケッチ平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal
+    direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    if normal.z < 0.0:
+        direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(mm_to_cm(cut_distance_mm))
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+
+def cut_profile_in_positive_z(root_comp, sketch, profile, outer_shell_body, cut_distance_mm):
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('Z 方向カット対象スケッチ平面のジオメトリを取得できませんでした。')
+
+    normal = plane_geometry.normal
+    direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if normal.z < 0.0:
+        direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    distance_value = adsk.core.ValueInput.createByReal(mm_to_cm(cut_distance_mm))
     extrude_input.setOneSideExtent(
         adsk.fusion.DistanceExtentDefinition.create(distance_value),
         direction,
@@ -3086,6 +4249,182 @@ def cut_outer_shell_fitting_adjustment_region(
     )
 
 
+def create_outer_shell_fitting_correction_sketch(root_comp):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+
+    plane = create_offset_plane_from_xy(
+        root_comp,
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['O'][2],
+        OUTER_SHELL_FITTING_CORRECTION_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_FITTING_CORRECTION_SKETCH_NAME
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM,
+    )
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+    lines.addByTwoPoints(sketch_points['O'], sketch_points['R'])
+    lines.addByTwoPoints(sketch_points['R'], sketch_points['P'])
+    lines.addByTwoPoints(sketch_points['Q'], sketch_points['O'])
+
+    center_o_xy_mm = (
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['O'][0],
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['O'][1],
+    )
+    point_p_xy_mm = (
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['P'][0],
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['P'][1],
+    )
+    point_q_xy_mm = (
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['Q'][0],
+        OUTER_SHELL_FITTING_CORRECTION_POINTS_MM['Q'][1],
+    )
+    radius_pq_mm = get_distance_2d_mm(center_o_xy_mm, point_p_xy_mm)
+    angle_p_rad = angle_for_point_on_circle_mm(center_o_xy_mm, point_p_xy_mm)
+    angle_q_rad = angle_for_point_on_circle_mm(center_o_xy_mm, point_q_xy_mm)
+    arc_midpoint_xy_mm = point_on_circle_from_angle_mm(
+        center_o_xy_mm,
+        radius_pq_mm,
+        midpoint_angle_rad(
+            angle_p_rad,
+            angle_q_rad,
+            via_angle_rad=(-math.pi / 2.0),
+        ),
+    )
+    arcs.addByThreePoints(
+        sketch_points['P'].geometry,
+        create_point_in_sketch_space_mm(*arc_midpoint_xy_mm),
+        sketch_points['Q'].geometry,
+    )
+    return sketch
+
+
+def loft_cut_between_faces(root_comp, face_a, face_b, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if face_a is None or face_b is None:
+        raise RuntimeError('ロフト切り取り対象面が不足しています。')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    lofts = root_comp.features.loftFeatures
+    loft_input = lofts.createInput(adsk.fusion.FeatureOperations.CutFeatureOperation)
+    loft_input.isSolid = True
+    loft_input.loftSections.add(face_a)
+    loft_input.loftSections.add(face_b)
+    if hasattr(loft_input, 'participantBodies'):
+        loft_input.participantBodies = [outer_shell_body]
+    lofts.add(loft_input)
+
+
+def remove_split_outer_shell_fragments(root_comp):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+
+    candidate_bodies = []
+    inner_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_INNER_SHELL,
+    )
+
+    for index in range(root_comp.bRepBodies.count):
+        body = root_comp.bRepBodies.item(index)
+        if inner_shell_body is not None and body == inner_shell_body:
+            continue
+        candidate_bodies.append(body)
+
+    if not candidate_bodies:
+        raise RuntimeError('外殻候補ボディを取得できませんでした。')
+
+    kept_body = max(candidate_bodies, key=lambda body: get_body_volume(body))
+    for body in candidate_bodies:
+        if body == kept_body:
+            continue
+        root_comp.features.removeFeatures.add(body)
+
+    helpers.set_body_identity(kept_body, naming.BODY_OUTER_SHELL)
+    return kept_body
+
+
+def add_outer_shell_fitting_correction(root_comp, outer_shell_body, inner_shell_body=None):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    try:
+        correction_sketch = create_outer_shell_fitting_correction_sketch(root_comp)
+        correction_profile = get_largest_profile(
+            correction_sketch,
+        )
+        cut_profile_in_positive_z(
+            root_comp,
+            correction_sketch,
+            correction_profile,
+            current_outer_shell_body,
+            OUTER_SHELL_FITTING_CORRECTION_CUT_DISTANCE_MM,
+        )
+
+        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_OUTER_SHELL,
+        ) or current_outer_shell_body
+
+        face_tolerance_cm = mm_to_cm(0.5)
+        face_a = find_planar_face_through_points(
+            current_outer_shell_body,
+            OUTER_SHELL_FITTING_CORRECTION_A_FACE_POINTS_MM,
+            face_tolerance_cm,
+        )
+        face_b = find_planar_face_through_points(
+            current_outer_shell_body,
+            OUTER_SHELL_FITTING_CORRECTION_B_FACE_POINTS_MM,
+            face_tolerance_cm,
+        )
+        loft_cut_between_faces(
+            root_comp,
+            face_a,
+            face_b,
+            current_outer_shell_body,
+        )
+        current_outer_shell_body = remove_split_outer_shell_fragments(root_comp)
+    finally:
+        if moved_inner_shell_body is not None:
+            move_body_by_translation(
+                root_comp,
+                moved_inner_shell_body,
+                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+            )
+
+    return current_outer_shell_body
+
+
 def create_outer_shell_l_button_opening_base_structure_sketch(root_comp, outer_shell_body):
     face = find_largest_xz_face_at_y_covering_point(
         outer_shell_body,
@@ -3242,6 +4581,99 @@ def create_outer_shell_l_button_opening_inner_spec_sketch(root_comp, outer_shell
     }
 
 
+def create_outer_shell_l_button_opening_y32_cut_sketch(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    plane = create_offset_plane_from_xz(
+        root_comp,
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PLANE_Y_MM,
+        name=OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PLANE_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_SKETCH_NAME
+
+    projected_entities = to_entity_list(sketch.intersectWithSketchPlane([outer_shell_body]))
+    for projected_entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(projected_entity)
+        if sketch_curve:
+            sketch_curve.isConstruction = True
+
+    sketch_points = {}
+    for name, point_mm in (
+        ('A', OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_A_MM),
+        ('B', OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_B_MM),
+        ('C', OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_C_MM),
+        ('D', OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_D_MM),
+    ):
+        sketch_points[name] = sketch.sketchPoints.add(
+            to_sketch_space(sketch, point_mm)
+        )
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+    lines.addByTwoPoints(sketch_points['A'], sketch_points['B'])
+    line_dc = lines.addByTwoPoints(sketch_points['D'], sketch_points['C'])
+
+    point_a_xz_mm = (
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_A_MM[0],
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_A_MM[2],
+    )
+    point_b_xz_mm = (
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_B_MM[0],
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_B_MM[2],
+    )
+    point_c_xz_mm = (
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_C_MM[0],
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_C_MM[2],
+    )
+    point_d_xz_mm = (
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_D_MM[0],
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_POINT_D_MM[2],
+    )
+
+    arc_ca_midpoint_mm = get_tangent_arc_midpoint_at_endpoint_mm(
+        point_a_xz_mm,
+        point_c_xz_mm,
+        point_d_xz_mm,
+    )
+    arc_bd_midpoint_mm = get_tangent_arc_midpoint_at_endpoint_mm(
+        point_b_xz_mm,
+        point_d_xz_mm,
+        point_c_xz_mm,
+    )
+    arc_ca_midpoint_model_mm = (
+        arc_ca_midpoint_mm[0],
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PLANE_Y_MM,
+        arc_ca_midpoint_mm[1],
+    )
+    arc_bd_midpoint_model_mm = (
+        arc_bd_midpoint_mm[0],
+        OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PLANE_Y_MM,
+        arc_bd_midpoint_mm[1],
+    )
+
+    arc_ca = arcs.addByThreePoints(
+        sketch_points['C'].geometry,
+        to_sketch_space(sketch, arc_ca_midpoint_model_mm),
+        sketch_points['A'].geometry,
+    )
+    arc_bd = arcs.addByThreePoints(
+        sketch_points['B'].geometry,
+        to_sketch_space(sketch, arc_bd_midpoint_model_mm),
+        sketch_points['D'].geometry,
+    )
+    sketch.geometricConstraints.addTangent(line_dc, arc_ca)
+    sketch.geometricConstraints.addTangent(line_dc, arc_bd)
+
+    return {
+        'sketch': sketch,
+        'plane': plane,
+    }
+
+
 def cut_outer_shell_l_button_opening_inner_spec_region(
     root_comp,
     outer_shell_body,
@@ -3299,6 +4731,743 @@ def cut_outer_shell_l_button_opening_inner_spec_region(
             moved_inner_shell_body,
             x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
         )
+
+
+def cut_outer_shell_l_button_opening_y32_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    inner_shell_body=None,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+
+    profile = get_profile_nearest_point(
+        sketch,
+        to_sketch_space(sketch, OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_PROFILE_TARGET_MM),
+    )
+    cut_profile_in_negative_y_from_sketch(
+        root_comp,
+        sketch,
+        profile,
+        outer_shell_body,
+        inner_shell_body=inner_shell_body,
+        cut_distance_mm=OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_DISTANCE_MM,
+    )
+
+
+def create_outer_shell_lid_decoration_cut_1_sketch(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    plane = create_offset_plane_from_yz(
+        root_comp,
+        OUTER_SHELL_LID_DECORATION_CUT_1_PLANE_X_MM,
+        name=OUTER_SHELL_LID_DECORATION_CUT_1_PLANE_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LID_DECORATION_CUT_1_SKETCH_NAME
+    projected_entities = to_entity_list(sketch.intersectWithSketchPlane([outer_shell_body]))
+    for projected_entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(projected_entity)
+        if sketch_curve:
+            sketch_curve.isConstruction = True
+
+    sketch_points = {}
+    for name, point_mm in (
+        ('O', OUTER_SHELL_LID_DECORATION_CUT_1_POINT_O_MM),
+        ('P', OUTER_SHELL_LID_DECORATION_CUT_1_POINT_P_MM),
+        ('A', OUTER_SHELL_LID_DECORATION_CUT_1_POINT_A_MM),
+        ('B', OUTER_SHELL_LID_DECORATION_CUT_1_POINT_B_MM),
+        ('C', OUTER_SHELL_LID_DECORATION_CUT_1_POINT_C_MM),
+    ):
+        sketch_points[name] = sketch.sketchPoints.add(
+            to_sketch_space(sketch, point_mm)
+        )
+
+    lines = sketch.sketchCurves.sketchLines
+    lines.addByTwoPoints(sketch_points['A'], sketch_points['B'])
+    lines.addByTwoPoints(sketch_points['B'], sketch_points['C'])
+    lines.addByTwoPoints(sketch_points['C'], sketch_points['A'])
+    axis_line = lines.addByTwoPoints(sketch_points['O'], sketch_points['P'])
+    axis_line.isConstruction = True
+
+    return {
+        'sketch': sketch,
+        'plane': plane,
+        'axis_line': axis_line,
+    }
+
+
+def cut_outer_shell_lid_decoration_cut_1_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    axis_line,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if axis_line is None:
+        raise RuntimeError('axis_line is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    profile = get_profile_nearest_point(
+        sketch,
+        to_sketch_space(sketch, OUTER_SHELL_LID_DECORATION_CUT_1_PROFILE_TARGET_MM),
+    )
+
+    revolves = root_comp.features.revolveFeatures
+    revolve_input = revolves.createInput(
+        profile,
+        axis_line,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    revolve_input.participantBodies = [current_outer_shell_body]
+    revolve_input.setTwoSideAngleExtent(
+        adsk.core.ValueInput.createByString(
+            '{} deg'.format(OUTER_SHELL_LID_DECORATION_CUT_1_POSITIVE_ANGLE_DEG)
+        ),
+        adsk.core.ValueInput.createByString(
+            '{} deg'.format(OUTER_SHELL_LID_DECORATION_CUT_1_NEGATIVE_ANGLE_DEG)
+        ),
+    )
+    revolves.add(revolve_input)
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if updated_outer_shell_body is None:
+        updated_outer_shell_body = current_outer_shell_body
+    return updated_outer_shell_body
+
+
+def create_plane_by_angle(root_comp, linear_entity, angle_deg, planar_entity, name=None):
+    planes = root_comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByAngle(
+        linear_entity,
+        adsk.core.ValueInput.createByString('{} deg'.format(angle_deg)),
+        planar_entity,
+    )
+    plane = planes.add(plane_input)
+    if name:
+        plane.name = name
+    return plane
+
+
+def find_construction_plane_by_name(root_comp, name):
+    planes = root_comp.constructionPlanes
+    for index in range(planes.count):
+        plane = planes.item(index)
+        if plane and plane.name == name:
+            return plane
+    raise RuntimeError('指定された名前の構築平面を取得できませんでした。')
+
+
+def get_all_sketch_curves(sketch):
+    curves = []
+    collections = (
+        sketch.sketchCurves.sketchLines,
+        sketch.sketchCurves.sketchArcs,
+        sketch.sketchCurves.sketchCircles,
+        sketch.sketchCurves.sketchEllipses,
+        sketch.sketchCurves.sketchFittedSplines,
+    )
+    for collection in collections:
+        for index in range(collection.count):
+            curves.append(collection.item(index))
+    return curves
+
+
+def create_fitted_spline_segment_between_points(
+    sketch,
+    source_curve,
+    target_point_a,
+    target_point_b,
+    sample_count=120,
+):
+    sample_points = sample_sketch_curve_points_in_sketch_space(
+        source_curve,
+        sample_count=sample_count,
+    )
+    if len(sample_points) < 2:
+        raise RuntimeError('断面カーブのサンプル点が不足しています。')
+
+    index_a = min(
+        range(len(sample_points)),
+        key=lambda index: get_point_distance(sample_points[index], target_point_a),
+    )
+    index_b = min(
+        range(len(sample_points)),
+        key=lambda index: get_point_distance(sample_points[index], target_point_b),
+    )
+    if index_a == index_b:
+        if index_b < len(sample_points) - 1:
+            index_b += 1
+        elif index_a > 0:
+            index_a -= 1
+        else:
+            raise RuntimeError('断面カーブから NQ 区間を切り出せませんでした。')
+
+    start_index = min(index_a, index_b)
+    end_index = max(index_a, index_b)
+    segment_points = sample_points[start_index:end_index + 1]
+    if len(segment_points) < 2:
+        raise RuntimeError('断面カーブから有効な NQ 区間を取得できませんでした。')
+
+    fit_points = adsk.core.ObjectCollection.create()
+    fit_points.add(target_point_a)
+    for point in segment_points[1:-1]:
+        fit_points.add(point)
+    fit_points.add(target_point_b)
+    return sketch.sketchCurves.sketchFittedSplines.add(fit_points)
+
+
+def get_sampled_segment_points_between_points(
+    source_curve,
+    target_point_a,
+    target_point_b,
+    sample_count=120,
+):
+    sample_points = sample_sketch_curve_points_in_sketch_space(
+        source_curve,
+        sample_count=sample_count,
+    )
+    if len(sample_points) < 2:
+        raise RuntimeError('断面カーブのサンプル点が不足しています。')
+
+    index_a = min(
+        range(len(sample_points)),
+        key=lambda index: get_point_distance(sample_points[index], target_point_a),
+    )
+    index_b = min(
+        range(len(sample_points)),
+        key=lambda index: get_point_distance(sample_points[index], target_point_b),
+    )
+    if index_a == index_b:
+        if index_b < len(sample_points) - 1:
+            index_b += 1
+        elif index_a > 0:
+            index_a -= 1
+        else:
+            raise RuntimeError('断面カーブから NQ 区間を切り出せませんでした。')
+
+    start_index = min(index_a, index_b)
+    end_index = max(index_a, index_b)
+    segment_points = sample_points[start_index:end_index + 1]
+    if len(segment_points) < 2:
+        raise RuntimeError('断面カーブから有効な NQ 区間を取得できませんでした。')
+
+    return [target_point_a, *segment_points[1:-1], target_point_b]
+
+
+def create_outer_shell_lid_decoration_cut_2_sketch(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    outer_slope_face = find_face_by_named_attribute(
+        current_outer_shell_body,
+        OUTER_SHELL_LID_OUTER_SLOPE_FACE_NAME,
+    )
+    reference_sketch = root_comp.sketches.add(outer_slope_face)
+    reference_sketch.name = OUTER_SHELL_LID_DECORATION_CUT_2_REFERENCE_SKETCH_NAME
+
+    reference_points = {}
+    for name, point_mm in (
+        ('D', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_D_MM),
+        ('E', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_E_MM),
+        ('F', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_F_MM),
+        ('G', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_G_MM),
+    ):
+        reference_points[name] = reference_sketch.sketchPoints.add(
+            to_sketch_space(reference_sketch, point_mm)
+        )
+
+    reference_lines = reference_sketch.sketchCurves.sketchLines
+    reference_lines.addByTwoPoints(reference_points['D'], reference_points['E']).isConstruction = True
+    axis_line = reference_lines.addByTwoPoints(reference_points['F'], reference_points['G'])
+    axis_line.isConstruction = True
+
+    plane = create_plane_by_angle(
+        root_comp,
+        axis_line,
+        OUTER_SHELL_LID_DECORATION_CUT_2_PLANE_ANGLE_DEG,
+        outer_slope_face,
+        name=OUTER_SHELL_LID_DECORATION_CUT_2_PLANE_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LID_DECORATION_CUT_2_SKETCH_NAME
+
+    sketch_points = {}
+    for name, point_mm in (
+        ('H', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_H_MM),
+        ('I', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_I_MM),
+        ('J', OUTER_SHELL_LID_DECORATION_CUT_2_POINT_J_MM),
+    ):
+        sketch_points[name] = sketch.sketchPoints.add(
+            to_sketch_space(sketch, point_mm)
+        )
+
+    lines = sketch.sketchCurves.sketchLines
+    lines.addByTwoPoints(sketch_points['H'], sketch_points['I'])
+    lines.addByTwoPoints(sketch_points['I'], sketch_points['J'])
+    lines.addByTwoPoints(sketch_points['J'], sketch_points['H'])
+
+    return {
+        'reference_sketch': reference_sketch,
+        'plane': plane,
+        'sketch': sketch,
+    }
+
+
+def cut_outer_shell_lid_decoration_cut_2_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    profile = get_profile_nearest_point(
+        sketch,
+        to_sketch_space(sketch, OUTER_SHELL_LID_DECORATION_CUT_2_PROFILE_TARGET_MM),
+    )
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('蓋部装飾切取り②スケッチ平面のジオメトリを取得できませんでした。')
+
+    negative_x_direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    positive_x_direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if plane_geometry.normal.x < 0.0:
+        negative_x_direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+        positive_x_direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(
+            adsk.core.ValueInput.createByReal(
+                mm_to_cm(OUTER_SHELL_LID_DECORATION_CUT_2_NEGATIVE_X_DISTANCE_MM)
+            )
+        ),
+        negative_x_direction,
+    )
+    extrudes.add(extrude_input)
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(
+            adsk.core.ValueInput.createByReal(
+                mm_to_cm(OUTER_SHELL_LID_DECORATION_CUT_2_POSITIVE_X_DISTANCE_MM)
+            )
+        ),
+        positive_x_direction,
+    )
+    extrudes.add(extrude_input)
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if updated_outer_shell_body is None:
+        updated_outer_shell_body = current_outer_shell_body
+    return updated_outer_shell_body
+
+
+def create_outer_shell_lid_decoration_cut_3_faces(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    face_tolerance_cm = mm_to_cm(0.6)
+    face_1_points = (
+        OUTER_SHELL_LID_DECORATION_CUT_3_POINT_A_PRIME_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_3_POINT_B_PRIME_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_3_POINT_C_PRIME_MM,
+    )
+    face_2_points = (
+        OUTER_SHELL_LID_DECORATION_CUT_3_POINT_A_PRIME_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_3_POINT_B_PRIME_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_3_POINT_H_PRIME_MM,
+    )
+
+    try:
+        face_1 = find_planar_face_through_points(
+            current_outer_shell_body,
+            face_1_points,
+            face_tolerance_cm,
+        )
+    except RuntimeError:
+        face_1 = find_best_planar_face_for_points(
+            current_outer_shell_body,
+            face_1_points,
+            min_alignment=0.9,
+        )
+
+    try:
+        face_2 = find_planar_face_through_points(
+            current_outer_shell_body,
+            face_2_points,
+            face_tolerance_cm,
+        )
+    except RuntimeError:
+        face_2 = find_best_planar_face_for_points(
+            current_outer_shell_body,
+            face_2_points,
+            min_alignment=0.9,
+        )
+
+    return {
+        'face_1': face_1,
+        'face_2': face_2,
+    }
+
+
+def loft_cut_between_profiles(root_comp, profile_a, profile_b, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if profile_a is None or profile_b is None:
+        raise RuntimeError('ロフト切り取り対象プロファイルが不足しています。')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    lofts = root_comp.features.loftFeatures
+    loft_input = lofts.createInput(adsk.fusion.FeatureOperations.CutFeatureOperation)
+    loft_input.isSolid = True
+    loft_input.loftSections.add(profile_a)
+    loft_input.loftSections.add(profile_b)
+    if hasattr(loft_input, 'participantBodies'):
+        loft_input.participantBodies = [outer_shell_body]
+    lofts.add(loft_input)
+
+
+def cut_outer_shell_lid_decoration_cut_3_region(
+    root_comp,
+    outer_shell_body,
+    face_1,
+    face_2,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if face_1 is None or face_2 is None:
+        raise RuntimeError('faces are required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    loft_cut_between_faces(
+        root_comp,
+        face_1,
+        face_2,
+        current_outer_shell_body,
+    )
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if updated_outer_shell_body is None:
+        updated_outer_shell_body = current_outer_shell_body
+    return updated_outer_shell_body
+
+
+def create_outer_shell_lid_decoration_cut_4_sketch(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    plane = find_construction_plane_by_name(
+        root_comp,
+        OUTER_SHELL_LID_DECORATION_CUT_2_PLANE_NAME,
+    )
+
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LID_DECORATION_CUT_4_SKETCH_NAME
+
+    sketch_points = {}
+    for name, point_mm in (
+        ('K', OUTER_SHELL_LID_DECORATION_CUT_4_POINT_K_MM),
+        ('L', OUTER_SHELL_LID_DECORATION_CUT_4_POINT_L_MM),
+        ('M', OUTER_SHELL_LID_DECORATION_CUT_4_POINT_M_MM),
+        ('N', OUTER_SHELL_LID_DECORATION_CUT_4_POINT_N_MM),
+        ('Q', OUTER_SHELL_LID_DECORATION_CUT_4_POINT_Q_MM),
+    ):
+        sketch_points[name] = sketch.sketchPoints.add(
+            to_sketch_space(sketch, point_mm)
+        )
+
+    lines = sketch.sketchCurves.sketchLines
+    lines.addByTwoPoints(sketch_points['M'], sketch_points['N'])
+    lines.addByTwoPoints(sketch_points['N'], sketch_points['Q'])
+    lines.addByTwoPoints(sketch_points['Q'], sketch_points['M'])
+    axis_line = lines.addByTwoPoints(sketch_points['K'], sketch_points['L'])
+    axis_line.isConstruction = True
+
+    return {
+        'plane': plane,
+        'sketch': sketch,
+        'axis_line': axis_line,
+    }
+
+
+def cut_outer_shell_lid_decoration_cut_4_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    axis_line,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if axis_line is None:
+        raise RuntimeError('axis_line is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    profile = get_profile_nearest_point(
+        sketch,
+        to_sketch_space(sketch, OUTER_SHELL_LID_DECORATION_CUT_4_PROFILE_TARGET_MM),
+    )
+    revolves = root_comp.features.revolveFeatures
+    revolve_input = revolves.createInput(
+        profile,
+        axis_line,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    revolve_input.participantBodies = [current_outer_shell_body]
+    revolve_input.setAngleExtent(
+        False,
+        adsk.core.ValueInput.createByString(
+            '{} deg'.format(OUTER_SHELL_LID_DECORATION_CUT_4_REVOLVE_ANGLE_DEG)
+        ),
+    )
+    revolves.add(revolve_input)
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if updated_outer_shell_body is None:
+        updated_outer_shell_body = current_outer_shell_body
+
+    extrudes = root_comp.features.extrudeFeatures
+    distance_value = adsk.core.ValueInput.createByReal(
+        mm_to_cm(OUTER_SHELL_LID_DECORATION_CUT_4_EXTRUDE_DISTANCE_MM)
+    )
+
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [updated_outer_shell_body]
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        adsk.fusion.ExtentDirections.NegativeExtentDirection,
+    )
+    extrudes.add(extrude_input)
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or updated_outer_shell_body
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [updated_outer_shell_body]
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(distance_value),
+        adsk.fusion.ExtentDirections.PositiveExtentDirection,
+    )
+    extrudes.add(extrude_input)
+
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or updated_outer_shell_body
+
+
+def create_outer_shell_lid_decoration_cut_5_sketch(root_comp, outer_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    profile_plane = create_plane_by_three_points(
+        root_comp,
+        OUTER_SHELL_LID_DECORATION_CUT_5_POINT_X_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_5_POINT_Y_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_5_POINT_Z_MM,
+        OUTER_SHELL_LID_DECORATION_CUT_5_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(profile_plane)
+    sketch.name = OUTER_SHELL_LID_DECORATION_CUT_5_SKETCH_NAME
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        {
+            'X': OUTER_SHELL_LID_DECORATION_CUT_5_POINT_X_MM,
+            'Y': OUTER_SHELL_LID_DECORATION_CUT_5_POINT_Y_MM,
+            'Z': OUTER_SHELL_LID_DECORATION_CUT_5_POINT_Z_MM,
+        },
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['X', 'Y', 'Z'])
+
+    return {
+        'sketch': sketch,
+        'plane': profile_plane,
+    }
+
+
+def cut_outer_shell_lid_decoration_cut_5_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    profile = get_largest_profile(sketch)
+    plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
+    if not plane_geometry:
+        raise RuntimeError('蓋部装飾切取り⑤スケッチ平面のジオメトリを取得できませんでした。')
+
+    direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+    if plane_geometry.normal.x > 0.0:
+        direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+
+    extrudes = root_comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [current_outer_shell_body]
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(
+            adsk.core.ValueInput.createByReal(
+                mm_to_cm(OUTER_SHELL_LID_DECORATION_CUT_5_POSITIVE_DISTANCE_MM)
+            )
+        ),
+        direction,
+    )
+    extrudes.add(extrude_input)
+
+    updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
+
+    opposite_direction = adsk.fusion.ExtentDirections.NegativeExtentDirection
+    if direction == adsk.fusion.ExtentDirections.NegativeExtentDirection:
+        opposite_direction = adsk.fusion.ExtentDirections.PositiveExtentDirection
+
+    extrude_input = extrudes.createInput(
+        profile,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    extrude_input.participantBodies = [updated_outer_shell_body]
+    extrude_input.setOneSideExtent(
+        adsk.fusion.DistanceExtentDefinition.create(
+            adsk.core.ValueInput.createByReal(
+                mm_to_cm(OUTER_SHELL_LID_DECORATION_CUT_5_NEGATIVE_DISTANCE_MM)
+            )
+        ),
+        opposite_direction,
+    )
+    extrudes.add(extrude_input)
+
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or updated_outer_shell_body
 
 
 def cut_outer_shell_l_button_opening_slope_region(
@@ -4133,6 +6302,431 @@ def extrude_outer_shell_lid_gap_extension_region(
     return updated_outer_shell_body
 
 
+def add_model_points_to_sketch(sketch, point_map_mm):
+    sketch_points = {}
+    for name, point_mm in point_map_mm.items():
+        sketch_points[name] = sketch.sketchPoints.add(
+            to_sketch_space(sketch, point_mm)
+        )
+    return sketch_points
+
+
+def add_closed_polyline_to_sketch(sketch, sketch_points, point_names):
+    lines = sketch.sketchCurves.sketchLines
+    for start_name, end_name in zip(point_names, point_names[1:] + point_names[:1]):
+        lines.addByTwoPoints(
+            sketch_points[start_name],
+            sketch_points[end_name],
+        )
+
+
+def create_outer_shell_lower_stop_sketch_1(root_comp):
+    plane = create_offset_plane_from_yz(
+        root_comp,
+        OUTER_SHELL_LID_YZ_CUT_PLANE_X_MM,
+        OUTER_SHELL_LOWER_STOP_SKETCH_1_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_SKETCH_1_NAME
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        OUTER_SHELL_LOWER_STOP_SKETCH1_POINTS_MM,
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['A', 'B', 'D', 'C'])
+    return sketch
+
+
+def create_outer_shell_lower_stop_sketch_2(root_comp):
+    plane = create_plane_by_three_points(
+        root_comp,
+        OUTER_SHELL_LOWER_STOP_SKETCH2_POINTS_MM['E'],
+        OUTER_SHELL_LOWER_STOP_SKETCH2_POINTS_MM['F'],
+        OUTER_SHELL_LOWER_STOP_SKETCH2_POINTS_MM['G'],
+        OUTER_SHELL_LOWER_STOP_SKETCH_2_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_SKETCH_2_NAME
+    add_model_points_to_sketch(
+        sketch,
+        OUTER_SHELL_LOWER_STOP_SKETCH2_POINTS_MM,
+    )
+    return sketch
+
+
+def create_outer_shell_lower_stop_sketch_3(root_comp):
+    point_map_mm = dict(OUTER_SHELL_LOWER_STOP_SKETCH1_POINTS_MM)
+    point_map_mm.update(OUTER_SHELL_LOWER_STOP_SKETCH3_POINTS_MM)
+    plane = create_plane_by_three_points(
+        root_comp,
+        point_map_mm['B'],
+        point_map_mm['H'],
+        point_map_mm['I'],
+        OUTER_SHELL_LOWER_STOP_SKETCH_3_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_SKETCH_3_NAME
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        {
+            'B': point_map_mm['B'],
+            'H': point_map_mm['H'],
+            'I': point_map_mm['I'],
+            'J': point_map_mm['J'],
+        },
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['B', 'H', 'I', 'J'])
+    return sketch
+
+
+def create_outer_shell_lower_stop_sketch_4(root_comp):
+    plane = create_offset_plane_from_xy(
+        root_comp,
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['K'][2],
+        OUTER_SHELL_LOWER_STOP_SKETCH_4_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_SKETCH_4_NAME
+
+    points_2d_mm = {
+        name: (point_mm[0], point_mm[1])
+        for name, point_mm in OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM.items()
+    }
+    sketch_points = {
+        name: sketch.sketchPoints.add(create_point_in_sketch_space_mm(*point_mm))
+        for name, point_mm in points_2d_mm.items()
+    }
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+    lines.addByTwoPoints(sketch_points['K'], sketch_points['L'])
+    lines.addByTwoPoints(sketch_points['M'], sketch_points['N'])
+
+    center_o_mm = points_2d_mm['O']
+    radius_ol_mm = get_distance_2d_mm(center_o_mm, points_2d_mm['L'])
+    angle_l_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['L'])
+    angle_m_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['M'])
+    midpoint_lm_rad = midpoint_angle_rad(angle_l_rad, angle_m_rad)
+    arc_lm_midpoint_mm = point_on_circle_from_angle_mm(
+        center_o_mm,
+        radius_ol_mm,
+        midpoint_lm_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['L'].geometry,
+        create_point_in_sketch_space_mm(*arc_lm_midpoint_mm),
+        sketch_points['M'].geometry,
+    )
+
+    radius_ok_mm = get_distance_2d_mm(center_o_mm, points_2d_mm['K'])
+    angle_n_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['N'])
+    angle_k_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['K'])
+    midpoint_nk_rad = midpoint_angle_rad(angle_n_rad, angle_k_rad)
+    arc_nk_midpoint_mm = point_on_circle_from_angle_mm(
+        center_o_mm,
+        radius_ok_mm,
+        midpoint_nk_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['N'].geometry,
+        create_point_in_sketch_space_mm(*arc_nk_midpoint_mm),
+        sketch_points['K'].geometry,
+    )
+
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(
+        create_point_in_sketch_space_mm(*center_o_mm),
+        mm_to_cm(get_distance_2d_mm(center_o_mm, points_2d_mm['P'])),
+    )
+    return sketch
+
+
+def create_outer_shell_lower_stop_arc_cut_support_sketch(root_comp):
+    plane = create_offset_plane_from_xy(
+        root_comp,
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['K'][2],
+    )
+    sketch = root_comp.sketches.add(plane)
+    points_2d_mm = {
+        name: (point_mm[0], point_mm[1])
+        for name, point_mm in OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM.items()
+        if name in ('K', 'L', 'M', 'N', 'O')
+    }
+    sketch_points = {
+        name: sketch.sketchPoints.add(create_point_in_sketch_space_mm(*point_mm))
+        for name, point_mm in points_2d_mm.items()
+    }
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+    lines.addByTwoPoints(sketch_points['K'], sketch_points['L'])
+    lines.addByTwoPoints(sketch_points['M'], sketch_points['N'])
+
+    center_o_mm = points_2d_mm['O']
+    radius_ol_mm = get_distance_2d_mm(center_o_mm, points_2d_mm['L'])
+    angle_l_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['L'])
+    angle_m_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['M'])
+    midpoint_lm_rad = midpoint_angle_rad(angle_l_rad, angle_m_rad)
+    arc_lm_midpoint_mm = point_on_circle_from_angle_mm(
+        center_o_mm,
+        radius_ol_mm,
+        midpoint_lm_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['L'].geometry,
+        create_point_in_sketch_space_mm(*arc_lm_midpoint_mm),
+        sketch_points['M'].geometry,
+    )
+
+    radius_ok_mm = get_distance_2d_mm(center_o_mm, points_2d_mm['K'])
+    angle_n_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['N'])
+    angle_k_rad = angle_for_point_on_circle_mm(center_o_mm, points_2d_mm['K'])
+    midpoint_nk_rad = midpoint_angle_rad(angle_n_rad, angle_k_rad)
+    arc_nk_midpoint_mm = point_on_circle_from_angle_mm(
+        center_o_mm,
+        radius_ok_mm,
+        midpoint_nk_rad,
+    )
+    arcs.addByThreePoints(
+        sketch_points['N'].geometry,
+        create_point_in_sketch_space_mm(*arc_nk_midpoint_mm),
+        sketch_points['K'].geometry,
+    )
+    return sketch
+
+
+def create_outer_shell_lower_stop_circle_cut_support_sketch(root_comp):
+    plane = create_offset_plane_from_xy(
+        root_comp,
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['K'][2],
+    )
+    sketch = root_comp.sketches.add(plane)
+    center_o_mm = (
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['O'][0],
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['O'][1],
+    )
+    point_p_mm = (
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['P'][0],
+        OUTER_SHELL_LOWER_STOP_SKETCH4_POINTS_MM['P'][1],
+    )
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(
+        create_point_in_sketch_space_mm(*center_o_mm),
+        mm_to_cm(get_distance_2d_mm(center_o_mm, point_p_mm)),
+    )
+    return sketch
+
+
+def create_outer_shell_lower_stop_sketch_5(root_comp):
+    sketch = root_comp.sketches.add(root_comp.yZConstructionPlane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_SKETCH_5_NAME
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        OUTER_SHELL_LOWER_STOP_SKETCH5_POINTS_MM,
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['Q', 'R', 'S', 'T', 'U', 'V', 'W'])
+    return sketch
+
+
+def create_outer_shell_lower_stop_support_sketch(root_comp, lower_stop_body):
+    if lower_stop_body is None:
+        raise RuntimeError('lower_stop_body is required.')
+
+    plane = create_offset_plane_from_yz(
+        root_comp,
+        -OUTER_SHELL_LOWER_STOP_EXTRUDE_DISTANCE_MM,
+        OUTER_SHELL_LOWER_STOP_SUPPORT_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_SUPPORT_SKETCH_NAME
+    projected_entities = to_entity_list(
+        sketch.intersectWithSketchPlane([lower_stop_body])
+    )
+    if not projected_entities:
+        raise RuntimeError('外殻下部受止のフィレット後断面を取得できませんでした。')
+
+    for projected_entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(projected_entity)
+        if sketch_curve:
+            sketch_curve.isConstruction = False
+    return sketch
+
+
+def create_outer_shell_lower_stop_loft_sketch(root_comp):
+    point_map_mm = dict(OUTER_SHELL_LOWER_STOP_SKETCH1_POINTS_MM)
+    point_map_mm.update(OUTER_SHELL_LOWER_STOP_SKETCH3_POINTS_MM)
+    point_map_mm.update({
+        'Up': offset_point_x_mm(OUTER_SHELL_LOWER_STOP_SKETCH5_POINTS_MM['U'], -OUTER_SHELL_LOWER_STOP_EXTRUDE_DISTANCE_MM),
+        'Vp': offset_point_x_mm(OUTER_SHELL_LOWER_STOP_SKETCH5_POINTS_MM['V'], -OUTER_SHELL_LOWER_STOP_EXTRUDE_DISTANCE_MM),
+    })
+    plane = create_plane_by_three_points(
+        root_comp,
+        point_map_mm['B'],
+        point_map_mm['J'],
+        point_map_mm['Up'],
+        OUTER_SHELL_LOWER_STOP_LOFT_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_LOWER_STOP_LOFT_SKETCH_NAME
+    sketch_points = add_model_points_to_sketch(
+        sketch,
+        {
+            'B': point_map_mm['B'],
+            'J': point_map_mm['J'],
+            'Up': point_map_mm['Up'],
+            'Vp': point_map_mm['Vp'],
+        },
+    )
+    add_closed_polyline_to_sketch(sketch, sketch_points, ['B', 'J', 'Up', 'Vp'])
+    return sketch
+
+
+def loft_profiles(root_comp, profile_a, profile_b):
+    lofts = root_comp.features.loftFeatures
+    loft_input = lofts.createInput(adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    loft_input.isSolid = True
+    loft_input.loftSections.add(profile_a)
+    loft_input.loftSections.add(profile_b)
+    lofts.add(loft_input)
+
+
+def loft_profiles_new_body(root_comp, profile_a, profile_b):
+    lofts = root_comp.features.loftFeatures
+    loft_input = lofts.createInput(adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    loft_input.isSolid = True
+    loft_input.loftSections.add(profile_a)
+    loft_input.loftSections.add(profile_b)
+    feature = lofts.add(loft_input)
+    return get_body_from_feature(feature)
+
+
+def add_outer_shell_lower_stop_structure(root_comp, outer_shell_body, inner_shell_body=None):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    )
+    if current_outer_shell_body is None:
+        current_outer_shell_body = outer_shell_body
+
+    sketch_1 = create_outer_shell_lower_stop_sketch_1(root_comp)
+    create_outer_shell_lower_stop_sketch_2(root_comp)
+    sketch_3 = create_outer_shell_lower_stop_sketch_3(root_comp)
+    create_outer_shell_lower_stop_sketch_4(root_comp)
+    arc_cut_sketch = create_outer_shell_lower_stop_arc_cut_support_sketch(root_comp)
+    circle_cut_sketch = create_outer_shell_lower_stop_circle_cut_support_sketch(root_comp)
+    sketch_5 = create_outer_shell_lower_stop_sketch_5(root_comp)
+    loft_sketch = create_outer_shell_lower_stop_loft_sketch(root_comp)
+
+    lower_stop_body = extrude_profile_in_negative_x_from_sketch_new_body(
+        root_comp,
+        sketch_5,
+        get_largest_profile(sketch_5),
+        OUTER_SHELL_LOWER_STOP_EXTRUDE_DISTANCE_MM,
+    )
+
+    for point_name in ('Q', 'R'):
+        extruded_point_mm = offset_point_x_mm(
+            OUTER_SHELL_LOWER_STOP_SKETCH5_POINTS_MM[point_name],
+            -OUTER_SHELL_LOWER_STOP_EXTRUDE_DISTANCE_MM,
+        )
+        target_point_mm = get_midpoint_mm(
+            OUTER_SHELL_LOWER_STOP_SKETCH5_POINTS_MM[point_name],
+            extruded_point_mm,
+        )
+        edge = find_linear_edge_parallel_to_x_near_point(
+            lower_stop_body,
+            target_point_mm,
+        )
+        apply_constant_radius_fillet(
+            root_comp,
+            edge,
+            OUTER_SHELL_LOWER_STOP_FILLET_RADIUS_MM,
+            tangent_chain=False,
+        )
+
+    support_sketch = create_outer_shell_lower_stop_support_sketch(
+        root_comp,
+        lower_stop_body,
+    )
+
+    current_inner_shell_body = inner_shell_body
+    if current_inner_shell_body is None:
+        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            naming.BODY_INNER_SHELL,
+        )
+
+    moved_inner_shell_body = None
+    if current_inner_shell_body is not None:
+        moved_inner_shell_body = move_body_by_translation(
+            root_comp,
+            current_inner_shell_body,
+            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
+        )
+
+    try:
+        lower_stop_loft_body_1 = loft_profiles_new_body(
+            root_comp,
+            get_largest_profile(support_sketch),
+            get_largest_profile(sketch_1),
+        )
+        lower_stop_loft_body_2 = loft_profiles_new_body(
+            root_comp,
+            get_largest_profile(sketch_3),
+            get_largest_profile(loft_sketch),
+        )
+        current_outer_shell_body = join_tool_bodies_into_target(
+            root_comp,
+            current_outer_shell_body,
+            [lower_stop_body, lower_stop_loft_body_1, lower_stop_loft_body_2],
+        )
+
+        arc_profile = get_largest_profile(arc_cut_sketch)
+        cut_profile_in_positive_z(
+            root_comp,
+            arc_cut_sketch,
+            arc_profile,
+            current_outer_shell_body,
+            OUTER_SHELL_LOWER_STOP_ARC_POSITIVE_Z_CUT_DISTANCE_MM,
+        )
+        cut_profile_in_negative_z(
+            root_comp,
+            arc_cut_sketch,
+            arc_profile,
+            current_outer_shell_body,
+            OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM,
+        )
+
+        circle_profile = get_largest_profile(circle_cut_sketch)
+        cut_profile_in_positive_z(
+            root_comp,
+            circle_cut_sketch,
+            circle_profile,
+            current_outer_shell_body,
+            OUTER_SHELL_LOWER_STOP_CIRCLE_POSITIVE_Z_CUT_DISTANCE_MM,
+        )
+        cut_profile_in_negative_z(
+            root_comp,
+            circle_cut_sketch,
+            circle_profile,
+            current_outer_shell_body,
+            OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM,
+        )
+    finally:
+        if moved_inner_shell_body is not None:
+            move_body_by_translation(
+                root_comp,
+                moved_inner_shell_body,
+                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
+            )
+
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
+
+
 def add_outer_shell_l_button_opening_offset_fillet(root_comp, outer_shell_body):
     _ = root_comp
     _ = outer_shell_body
@@ -4179,52 +6773,53 @@ def add_structures_to_outer_shell_base_structure(
         raise RuntimeError('outer_shell_base_structure_body is required.')
 
     _ = params
+    current_outer_shell_body = outer_shell_base_structure_body
     opening_data = create_outer_shell_l_button_opening_sketch(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
     )
     extrude_outer_shell_l_button_opening_region(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
         opening_data['sketch'],
     )
     end_cut_data = create_outer_shell_end_cut_sketch(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
     )
     cut_outer_shell_end_region(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
         end_cut_data['sketch'],
         end_cut_data['face'],
     )
     side_extension_data = create_outer_shell_side_extension_sketch(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
     )
     extrude_outer_shell_side_extension_region(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
         side_extension_data['sketch'],
         side_extension_data['face'],
     )
     fitting_adjustment_data = create_outer_shell_fitting_adjustment_sketch(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
     )
     cut_outer_shell_fitting_adjustment_region(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
         fitting_adjustment_data['sketch'],
         fitting_adjustment_data['face'],
     )
     add_outer_shell_l_button_opening_offset_fillet(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
     )
     current_outer_shell_body = split_outer_shell_by_lid_inner_plane(
         root_comp,
-        outer_shell_base_structure_body,
+        current_outer_shell_body,
         inner_shell_body,
     )
     lid_gap_data = create_outer_shell_lid_gap_sketch(
@@ -4273,6 +6868,16 @@ def add_structures_to_outer_shell_base_structure(
         inner_spec_data['axis_line'],
         inner_shell_body=inner_shell_body,
     )
+    y32_cut_data = create_outer_shell_l_button_opening_y32_cut_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    cut_outer_shell_l_button_opening_y32_region(
+        root_comp,
+        current_outer_shell_body,
+        y32_cut_data['sketch'],
+        inner_shell_body=inner_shell_body,
+    )
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
@@ -4290,6 +6895,73 @@ def add_structures_to_outer_shell_base_structure(
         lid_gap_extension_data['sketch'],
         lid_gap_extension_data['plane'],
         lid_gap_extension_data['extension_profile_target_point'],
+    )
+    current_outer_shell_body = add_outer_shell_lower_stop_structure(
+        root_comp,
+        current_outer_shell_body,
+        inner_shell_body=inner_shell_body,
+    )
+    lid_decoration_cut_1_data = create_outer_shell_lid_decoration_cut_1_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = cut_outer_shell_lid_decoration_cut_1_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_decoration_cut_1_data['sketch'],
+        lid_decoration_cut_1_data['axis_line'],
+    )
+    lid_decoration_cut_2_data = create_outer_shell_lid_decoration_cut_2_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = cut_outer_shell_lid_decoration_cut_2_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_decoration_cut_2_data['sketch'],
+    )
+    lid_decoration_cut_3_data = create_outer_shell_lid_decoration_cut_3_faces(
+        root_comp,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = cut_outer_shell_lid_decoration_cut_3_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_decoration_cut_3_data['face_1'],
+        lid_decoration_cut_3_data['face_2'],
+    )
+    lid_decoration_cut_4_data = create_outer_shell_lid_decoration_cut_4_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = cut_outer_shell_lid_decoration_cut_4_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_decoration_cut_4_data['sketch'],
+        lid_decoration_cut_4_data['axis_line'],
+    )
+    lid_decoration_cut_5_data = create_outer_shell_lid_decoration_cut_5_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = cut_outer_shell_lid_decoration_cut_5_region(
+        root_comp,
+        current_outer_shell_body,
+        lid_decoration_cut_5_data['sketch'],
+    )
+    current_outer_shell_body = add_outer_shell_fitting_correction(
+        root_comp,
+        current_outer_shell_body,
+        inner_shell_body=inner_shell_body,
+    )
+    current_outer_shell_body = extrude_outer_shell_bottom_outer_slope(
+        root_comp,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = cut_outer_shell_bottom_outer_slope_regions(
+        root_comp,
+        current_outer_shell_body,
+        inner_shell_body=inner_shell_body,
     )
     return current_outer_shell_body
 
