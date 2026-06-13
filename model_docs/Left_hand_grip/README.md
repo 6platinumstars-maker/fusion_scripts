@@ -6,6 +6,7 @@
 
 - 内殻資料: [INNER_SHELL.md](/home/ps/fusion_scripts/model_docs/Left_hand_grip/INNER_SHELL.md)
 - 外殻資料: [OUTER_SHELL.md](/home/ps/fusion_scripts/model_docs/Left_hand_grip/OUTER_SHELL.md)
+- 外殻分離チェックリスト: [OUTER_SHELL_SEPARATION_CHECKLIST.md](/home/ps/fusion_scripts/model_docs/Left_hand_grip/OUTER_SHELL_SEPARATION_CHECKLIST.md)
 - 互換入口として残す旧スクリプト: [fusion_app/Left_hand_grip.py](/home/ps/fusion_scripts/fusion_app/Left_hand_grip.py)
 - 現在の内殻生成本体: [fusion_app/inner_shell.py](/home/ps/fusion_scripts/fusion_app/inner_shell.py)
 - 分割後の外殻スクリプト: [fusion_app/outer_shell.py](/home/ps/fusion_scripts/fusion_app/outer_shell.py)
@@ -17,6 +18,8 @@
   `内殻` のベース形状、止部、ジョイスティック受け、回転切り取りを含む現仕様をまとめた資料です。
 - `OUTER_SHELL.md`
   `outer_shell.py` で管理している `外殻` の現仕様をまとめた資料です。内殻との接触面逃がし、底面外側の追加形状、蓋部斜面隙間部、フィレットを含みます。
+- `OUTER_SHELL_SEPARATION_CHECKLIST.md`
+  `外殻` を `内殻` から分離するための依存洗い出し資料です。分離順序、要確認関数、検証観点をまとめています。
 
 ## 補足
 

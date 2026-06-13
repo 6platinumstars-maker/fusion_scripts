@@ -6,6 +6,7 @@
 
 - 外殻スクリプト: [fusion_app/outer_shell.py](/home/ps/fusion_scripts/fusion_app/outer_shell.py)
 - 組み立てスクリプト: [fusion_app/assembly_left_hand_grip.py](/home/ps/fusion_scripts/fusion_app/assembly_left_hand_grip.py)
+- 分離チェックリスト: [OUTER_SHELL_SEPARATION_CHECKLIST.md](/home/ps/fusion_scripts/model_docs/Left_hand_grip/OUTER_SHELL_SEPARATION_CHECKLIST.md)
 - 全体確認用コピー: [1.py](/home/ps/fusion_scripts/1.py)
 - スケッチ確認用コピー: [2.py](/home/ps/fusion_scripts/2.py)
 

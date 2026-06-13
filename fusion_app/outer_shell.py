@@ -81,6 +81,16 @@ OUTER_SHELL_BOTTOM_OUTER_FILLET_REFERENCE_POINTS_MM = (
     (-25.0, -19.174, -6.0),
 )
 INNER_SHELL_LID_SLOPE_FACE_NAME = '内殻蓋部斜面'
+OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME = '外殻断面参照'
+OUTER_SHELL_KEEPOUT_REFERENCE_BODY_NAME = '外殻逃がし参照'
+OUTER_SHELL_CONTACT_REFERENCE_BODY_NAME = '外殻接触参照'
+OUTER_SHELL_KEEPOUT_REFERENCE_SOURCE_BODY_NAME = '外殻逃がし参照ソース'
+OUTER_SHELL_CONTACT_REFERENCE_SOURCE_BODY_NAME = '外殻接触参照ソース'
+OUTER_SHELL_KEEPOUT_REFERENCE_ALTERNATIVE_SOURCE_BODY_NAME = '外殻逃がし参照ソース独立'
+OUTER_SHELL_CONTACT_REFERENCE_ALTERNATIVE_SOURCE_BODY_NAME = '外殻接触参照ソース独立'
+OUTER_SHELL_KEEPOUT_REFERENCE_OVERRIDE_BODY_NAME = '外殻逃がし参照ソース上書き'
+OUTER_SHELL_CONTACT_REFERENCE_OVERRIDE_BODY_NAME = '外殻接触参照ソース上書き'
+OUTER_SHELL_LID_SLOPE_REFERENCE_PLANE_NAME = '外殻蓋部斜面基準'
 OUTER_SHELL_LID_INNER_PLANE_NAME = '外殻蓋部斜面内部'
 OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM = 0.2
 OUTER_SHELL_LID_INNER_PLANE_EXTRUDE_SKETCH_NAME = '外殻蓋部斜面内部押し出し'
@@ -406,6 +416,2219 @@ def create_plane_by_three_points(root_comp, point_a_mm, point_b_mm, point_c_mm, 
     if name:
         plane.name = name
     return plane
+
+
+def find_sketch_by_name_or_attribute(root_comp, name):
+    sketches = root_comp.sketches
+    for index in range(sketches.count):
+        sketch = sketches.item(index)
+        if sketch.name == name:
+            return sketch
+        attr = sketch.attributes.itemByName(
+            naming.ATTRIBUTE_GROUP,
+            naming.ATTRIBUTE_NAME_KEY,
+        )
+        if attr and attr.value == name:
+            return sketch
+    return None
+
+
+def create_outer_shell_section_reference_sketch(root_comp, inner_shell_body):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if inner_shell_body is None:
+        raise RuntimeError('inner_shell_body is required.')
+
+    existing_sketch = find_sketch_by_name_or_attribute(
+        root_comp,
+        OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME,
+    )
+    if existing_sketch is not None:
+        return existing_sketch
+
+    sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+    sketch.name = OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME
+    helpers.add_named_attribute(sketch, OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME)
+
+    projected_entities = sketch.intersectWithSketchPlane([inner_shell_body])
+    projected_curves = []
+    for entity in projected_entities:
+        sketch_curve = adsk.fusion.SketchCurve.cast(entity)
+        if sketch_curve:
+            projected_curves.append(sketch_curve)
+
+    for sketch_curve in projected_curves:
+        clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve)
+
+    for sketch_curve in projected_curves:
+        sketch_curve.deleteMe()
+
+    return sketch
+
+
+def build_outer_shell_reference(
+    root_comp=None,
+    inner_shell_body=None,
+    include_body_handles=True,
+    section_source_body=None,
+    section_source_body_name=None,
+    section_source_sketch=None,
+    section_source_sketch_name=None,
+    keepout_source_body=None,
+    keepout_source_body_name=None,
+    keepout_source_bodies=None,
+    keepout_source_body_names=None,
+    contact_source_body=None,
+    contact_source_body_name=None,
+    contact_source_body_names=None,
+):
+    # Generic builder for an outer shell reference bundle; runtime/fallback paths specialize this.
+    reference = {
+        'lid_slope_points_mm': tuple(INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM),
+    }
+
+    default_source_body_name = naming.BODY_INNER_SHELL
+    if inner_shell_body is not None:
+        default_source_body_name = getattr(inner_shell_body, 'name', naming.BODY_INNER_SHELL)
+    reference['source_body_name'] = default_source_body_name
+
+    default_source_body = None
+    if include_body_handles:
+        default_source_body = inner_shell_body
+
+    reference.update(
+        build_outer_shell_section_reference(
+            root_comp=root_comp,
+            section_source_body=section_source_body,
+            section_source_body_name=section_source_body_name,
+            section_source_sketch=section_source_sketch,
+            section_source_sketch_name=section_source_sketch_name,
+            default_source_body=default_source_body,
+            default_source_body_name=default_source_body_name,
+        )
+    )
+
+    reference.update(
+        build_outer_shell_keepout_reference(
+            root_comp=root_comp,
+            keepout_source_body=keepout_source_body,
+            keepout_source_body_name=keepout_source_body_name,
+            keepout_source_bodies=keepout_source_bodies,
+            keepout_source_body_names=keepout_source_body_names,
+            default_source_body=default_source_body,
+            default_source_body_name=default_source_body_name,
+        )
+    )
+
+    reference.update(
+        build_outer_shell_contact_reference(
+            root_comp=root_comp,
+            contact_source_body=contact_source_body,
+            contact_source_body_name=contact_source_body_name,
+            contact_source_body_names=contact_source_body_names,
+            default_source_body=default_source_body,
+            default_source_body_name=default_source_body_name,
+        )
+    )
+
+    return reference
+
+
+def build_outer_shell_runtime_reference(root_comp):
+    # Primary runtime entrypoint for assembling the reference bundle from named artifacts.
+    runtime_reference_overrides = build_outer_shell_runtime_reference_overrides(root_comp)
+    return build_outer_shell_reference(
+        root_comp=root_comp,
+        include_body_handles=False,
+        section_source_sketch_name=runtime_reference_overrides['section_source_sketch_name'],
+        keepout_source_body_names=runtime_reference_overrides['keepout_source_body_names'],
+        contact_source_body_names=runtime_reference_overrides['contact_source_body_names'],
+    )
+
+
+def resolve_outer_shell_reference_source_name_candidates(
+    primary_source_body_name,
+    alternative_source_body_names,
+    fallback_source_body_names,
+):
+    return build_outer_shell_reference_body_name_candidates(
+        primary_source_body_name,
+        *alternative_source_body_names,
+        *fallback_source_body_names,
+    )
+
+
+def build_outer_shell_keepout_reference_source_body_name_candidates():
+    return resolve_outer_shell_reference_source_name_candidates(
+        build_outer_shell_keepout_reference_alternative_source_body_name(),
+        build_outer_shell_reference_body_name_candidates(
+            build_outer_shell_keepout_reference_source_body_name(),
+        ),
+        build_outer_shell_keepout_reference_body_fallback_source_name_candidates(),
+    )
+
+
+def build_outer_shell_keepout_reference_source_body_name():
+    return OUTER_SHELL_KEEPOUT_REFERENCE_SOURCE_BODY_NAME
+
+
+def resolve_outer_shell_reference_alternative_source_body(
+    root_comp,
+    alternative_source_body_name_candidates,
+):
+    return resolve_outer_shell_reference_body_source(
+        root_comp,
+        alternative_source_body_name_candidates,
+    )
+
+
+def should_use_outer_shell_reference_alternative_source_body(
+    root_comp,
+    alternative_source_body_name_candidates,
+):
+    return (
+        resolve_outer_shell_reference_alternative_source_body(
+            root_comp,
+            alternative_source_body_name_candidates,
+        )
+        is not None
+    )
+
+
+def resolve_outer_shell_reference_alternative_source_body_name_candidates(
+    alternative_source_body_name,
+):
+    return build_outer_shell_reference_body_name_candidates(
+        alternative_source_body_name,
+    )
+
+
+def create_outer_shell_reference_alternative_source_body(
+    root_comp,
+    source_body,
+    alternative_source_body_name,
+):
+    if root_comp is None:
+        return None
+    existing_body = find_outer_shell_reference_source_body_by_name(
+        root_comp,
+        alternative_source_body_name,
+    )
+    if existing_body is not None:
+        return existing_body
+    if source_body is None:
+        return None
+    return copy_outer_shell_reference_body_from_source(
+        root_comp,
+        source_body,
+        alternative_source_body_name,
+    )
+
+
+def build_outer_shell_keepout_reference_alternative_source_body(root_comp):
+    alternative_source_body = resolve_outer_shell_reference_alternative_source_body(
+        root_comp,
+        build_outer_shell_keepout_reference_alternative_source_body_name_candidates(),
+    )
+    if alternative_source_body is not None:
+        return alternative_source_body
+    return create_outer_shell_reference_alternative_source_body(
+        root_comp,
+        find_outer_shell_reference_source_body_by_name(
+            root_comp,
+            build_outer_shell_keepout_reference_source_body_name(),
+        ),
+        build_outer_shell_keepout_reference_alternative_source_body_name(),
+    )
+
+
+def ensure_outer_shell_keepout_reference_alternative_source_body(root_comp):
+    return build_outer_shell_keepout_reference_alternative_source_body(root_comp)
+
+
+def should_use_outer_shell_keepout_reference_alternative_source_body(root_comp):
+    return should_use_outer_shell_reference_alternative_source_body(
+        root_comp,
+        build_outer_shell_keepout_reference_alternative_source_body_name_candidates(),
+    )
+
+
+def build_outer_shell_keepout_reference_alternative_source_body_name():
+    return OUTER_SHELL_KEEPOUT_REFERENCE_ALTERNATIVE_SOURCE_BODY_NAME
+
+
+def build_outer_shell_keepout_reference_alternative_source_body_runtime_name(root_comp):
+    return getattr(
+        build_outer_shell_keepout_reference_alternative_source_body(root_comp),
+        'name',
+        None,
+    )
+
+
+def build_outer_shell_keepout_reference_alternative_source_body_name_candidates():
+    return resolve_outer_shell_reference_alternative_source_body_name_candidates(
+        build_outer_shell_keepout_reference_alternative_source_body_name(),
+    )
+
+
+def find_outer_shell_reference_source_body_by_name(root_comp, source_body_name):
+    return resolve_outer_shell_reference_body_source(
+        root_comp,
+        build_outer_shell_reference_body_name_candidates(source_body_name),
+    )
+
+
+def resolve_outer_shell_reference_source_body(
+    root_comp,
+    override_body,
+    source_body_names,
+):
+    if override_body is not None:
+        return override_body
+    return resolve_outer_shell_reference_body_source(
+        root_comp,
+        source_body_names,
+    )
+
+
+def resolve_outer_shell_reference_source_override_body(
+    primary_override_body,
+    alternative_source_body,
+):
+    return primary_override_body or alternative_source_body
+
+
+def build_outer_shell_keepout_reference_source_override_body(root_comp):
+    return resolve_outer_shell_reference_source_override_body(
+        build_outer_shell_keepout_reference_override_body(root_comp),
+        build_outer_shell_keepout_reference_alternative_source_body(root_comp),
+    )
+
+
+def build_outer_shell_keepout_reference_source_override_body_name(root_comp):
+    return getattr(
+        build_outer_shell_keepout_reference_source_override_body(root_comp),
+        'name',
+        None,
+    )
+
+
+def build_outer_shell_keepout_reference_override_body_runtime_name(root_comp):
+    return getattr(
+        build_outer_shell_keepout_reference_override_body(root_comp),
+        'name',
+        None,
+    )
+
+
+def should_use_outer_shell_reference_source_body(
+    root_comp,
+    override_body,
+    source_body_names,
+):
+    return (
+        resolve_outer_shell_reference_source_body(
+            root_comp,
+            override_body,
+            source_body_names,
+        )
+        is not None
+    )
+
+
+def build_outer_shell_keepout_reference_source_body(root_comp):
+    # Dedicated substitution point for replacing the keepout source with a non-inner-shell artifact later.
+    return resolve_outer_shell_reference_source_body(
+        root_comp,
+        build_outer_shell_keepout_reference_source_override_body(root_comp),
+        build_outer_shell_keepout_reference_source_body_name_candidates(),
+    )
+
+
+def build_outer_shell_keepout_reference_resolved_source_body(root_comp):
+    return build_outer_shell_keepout_reference_source_body(root_comp)
+
+
+def build_outer_shell_keepout_reference_resolved_source_body_name(root_comp):
+    return resolve_outer_shell_reference_body_runtime_name(
+        build_outer_shell_keepout_reference_resolved_source_body(root_comp),
+        build_outer_shell_keepout_reference_source_body_name(),
+    )
+
+
+def build_outer_shell_keepout_reference_resolved_source_body_names(root_comp):
+    return resolve_outer_shell_reference_body_runtime_names(
+        build_outer_shell_keepout_reference_source_body_name_candidates(),
+        tuple(),
+        build_outer_shell_keepout_reference_resolved_source_body_name(root_comp),
+    )
+
+
+def should_use_outer_shell_keepout_reference_resolved_alternative_source_body(root_comp):
+    return (
+        build_outer_shell_keepout_reference_resolved_source_body_name(root_comp)
+        == build_outer_shell_keepout_reference_alternative_source_body_name()
+    )
+
+
+def resolve_outer_shell_keepout_reference_source_body_override(root_comp):
+    return resolve_outer_shell_reference_override_body(
+        root_comp,
+        build_outer_shell_keepout_reference_override_body_name_candidates(),
+    )
+
+
+def build_outer_shell_keepout_reference_override_body_name():
+    return OUTER_SHELL_KEEPOUT_REFERENCE_OVERRIDE_BODY_NAME
+
+
+def build_outer_shell_keepout_reference_override_body_name_candidates():
+    # Ordered override-body candidates for the keepout source substitution point.
+    return build_outer_shell_reference_body_name_candidates(
+        build_outer_shell_keepout_reference_override_body_name(),
+    )
+
+
+def build_outer_shell_keepout_reference_override_body(root_comp):
+    return resolve_outer_shell_keepout_reference_source_body_override(root_comp)
+
+
+def should_use_outer_shell_keepout_reference_source_body(root_comp):
+    return should_use_outer_shell_reference_source_body(
+        root_comp,
+        build_outer_shell_keepout_reference_source_override_body(root_comp),
+        build_outer_shell_keepout_reference_source_body_name_candidates(),
+    )
+
+
+def should_include_inner_shell_keepout_fallback_source_name():
+    return False
+
+
+def build_outer_shell_keepout_reference_body_fallback_source_name_candidates():
+    body_names = []
+    if should_include_inner_shell_keepout_fallback_source_name():
+        body_names.append(naming.BODY_INNER_SHELL)
+    return build_outer_shell_reference_body_name_candidates(*body_names)
+
+
+def resolve_outer_shell_reference_body_source(root_comp, source_name_candidates):
+    # Resolve the first existing body from the ordered source-name candidates.
+    if root_comp is None:
+        return None
+
+    for source_name in source_name_candidates:
+        source_body = helpers.find_body_by_name_or_attribute(root_comp, source_name)
+        if source_body is not None:
+            return source_body
+
+    return None
+
+
+def build_outer_shell_reference_body_artifact_spec(
+    target_body_name,
+    source_name_candidates,
+):
+    # Package the minimum metadata needed to materialize a named reference body from ordered source candidates.
+    return {
+        'target_body_name': target_body_name,
+        'source_name_candidates': tuple(source_name_candidates),
+    }
+
+
+def get_outer_shell_reference_body_artifact_target_body_name(artifact_spec):
+    if artifact_spec is None:
+        return None
+    return artifact_spec.get('target_body_name')
+
+
+def get_outer_shell_reference_body_artifact_source_name_candidates(artifact_spec):
+    if artifact_spec is None:
+        return tuple()
+    return tuple(artifact_spec.get('source_name_candidates', ()))
+
+
+def find_outer_shell_reference_body_from_artifact_target(root_comp, artifact_spec):
+    if root_comp is None or artifact_spec is None:
+        return None
+    target_body_name = get_outer_shell_reference_body_artifact_target_body_name(artifact_spec)
+    if not target_body_name:
+        return None
+    return helpers.find_body_by_name_or_attribute(root_comp, target_body_name)
+
+
+def resolve_outer_shell_reference_body_artifact_copy_target_name(artifact_spec):
+    return get_outer_shell_reference_body_artifact_target_body_name(artifact_spec)
+
+
+def copy_outer_shell_reference_body_from_source(
+    root_comp,
+    source_body,
+    target_body_name,
+):
+    # Materialize a dedicated reference body by copy-pasting the resolved source body and renaming the result.
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if source_body is None:
+        raise RuntimeError('source_body is required.')
+    if not target_body_name:
+        raise RuntimeError('target_body_name is required.')
+
+    copy_paste_bodies = root_comp.features.copyPasteBodies
+    copy_feature = copy_paste_bodies.add(source_body)
+
+    reference_body = None
+    if hasattr(copy_feature, 'bodies') and copy_feature.bodies.count > 0:
+        reference_body = copy_feature.bodies.item(0)
+    if reference_body is None:
+        raise RuntimeError('専用参照ボディの複製結果を取得できませんでした。')
+
+    helpers.set_body_identity(reference_body, target_body_name)
+    return reference_body
+
+
+def should_create_outer_shell_keepout_reference_body():
+    return True
+
+
+def should_create_outer_shell_contact_reference_body():
+    return True
+
+
+def should_create_outer_shell_reference_body_from_spec(artifact_spec):
+    # Gate reference-body materialization per artifact type so we can enable separation incrementally.
+    if artifact_spec is None:
+        return False
+
+    target_body_name = get_outer_shell_reference_body_artifact_target_body_name(artifact_spec)
+    if target_body_name == build_outer_shell_keepout_reference_body_name():
+        return should_create_outer_shell_keepout_reference_body()
+    if target_body_name == build_outer_shell_contact_reference_body_name():
+        return should_create_outer_shell_contact_reference_body()
+    return False
+
+
+def create_outer_shell_reference_body_from_spec(root_comp, artifact_spec):
+    # Shared path for resolving or materializing a named reference body from its artifact specification.
+    if root_comp is None:
+        return None
+    if artifact_spec is None:
+        return None
+
+    existing_body = find_outer_shell_reference_body_from_artifact_target(root_comp, artifact_spec)
+    if existing_body is not None:
+        return existing_body
+
+    if not should_create_outer_shell_reference_body_from_spec(artifact_spec):
+        return None
+
+    source_name_candidates = get_outer_shell_reference_body_artifact_source_name_candidates(artifact_spec)
+    source_body = resolve_outer_shell_reference_body_source(root_comp, source_name_candidates)
+    if source_body is None:
+        return None
+
+    target_body_name = resolve_outer_shell_reference_body_artifact_copy_target_name(artifact_spec)
+    return copy_outer_shell_reference_body_from_source(
+        root_comp,
+        source_body,
+        target_body_name,
+    )
+
+
+def create_outer_shell_reference_body_from_fallback_spec(
+    root_comp,
+    fallback_artifact_spec,
+):
+    return create_outer_shell_reference_body_from_spec(
+        root_comp,
+        fallback_artifact_spec,
+    )
+
+
+def resolve_outer_shell_reference_body_fallback_artifact_spec(
+    artifact_spec,
+    default_fallback_artifact_spec,
+):
+    if artifact_spec is not None:
+        return artifact_spec
+    return default_fallback_artifact_spec
+
+
+def create_outer_shell_reference_body_from_source_or_fallback(
+    root_comp,
+    artifact_spec,
+    source_body,
+    fallback_artifact_spec,
+):
+    if source_body is None:
+        return create_outer_shell_reference_body_from_fallback_spec(
+            root_comp,
+            fallback_artifact_spec,
+        )
+
+    target_body_name = resolve_outer_shell_reference_body_artifact_copy_target_name(artifact_spec)
+    if not target_body_name:
+        return create_outer_shell_reference_body_from_fallback_spec(
+            root_comp,
+            fallback_artifact_spec,
+        )
+
+    return copy_outer_shell_reference_body_from_source(
+        root_comp,
+        source_body,
+        target_body_name,
+    )
+
+
+def create_outer_shell_keepout_reference_body_from_fallback(root_comp, artifact_spec):
+    # Legacy/default materialization path when no dedicated keepout source body is available.
+    artifact_spec = resolve_outer_shell_reference_body_fallback_artifact_spec(
+        artifact_spec,
+        build_outer_shell_keepout_reference_body_fallback_artifact_spec(),
+    )
+    return create_outer_shell_reference_body_from_fallback_spec(
+        root_comp,
+        artifact_spec,
+    )
+
+
+def create_outer_shell_keepout_reference_body_from_source(root_comp, artifact_spec):
+    # Prefer a dedicated keepout source body when present; otherwise fall back to the legacy/default path.
+    if not should_use_outer_shell_keepout_reference_source_body(root_comp):
+        return create_outer_shell_keepout_reference_body_from_fallback(
+            root_comp,
+            artifact_spec,
+        )
+    return create_outer_shell_reference_body_from_source_or_fallback(
+        root_comp,
+        artifact_spec,
+        build_outer_shell_keepout_reference_source_body(root_comp),
+        build_outer_shell_keepout_reference_body_fallback_artifact_spec(),
+    )
+
+
+def build_outer_shell_keepout_reference_body(root_comp):
+    if root_comp is None:
+        return None
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        build_outer_shell_keepout_reference_body_name(),
+    )
+
+
+def build_outer_shell_keepout_reference_body_name():
+    return OUTER_SHELL_KEEPOUT_REFERENCE_BODY_NAME
+
+
+def build_outer_shell_keepout_reference_body_artifact_spec():
+    return build_outer_shell_reference_body_artifact_spec(
+        build_outer_shell_keepout_reference_body_name(),
+        build_outer_shell_keepout_reference_source_body_name_candidates(),
+    )
+
+
+def build_outer_shell_keepout_reference_body_fallback_artifact_spec():
+    return build_outer_shell_reference_body_artifact_spec(
+        build_outer_shell_keepout_reference_body_name(),
+        build_outer_shell_keepout_reference_body_fallback_source_name_candidates(),
+    )
+
+
+def create_outer_shell_keepout_reference_body(root_comp):
+    keepout_reference_spec = build_outer_shell_keepout_reference_body_artifact_spec()
+    if should_create_outer_shell_keepout_reference_body():
+        return create_outer_shell_keepout_reference_body_from_source(
+            root_comp,
+            keepout_reference_spec,
+        )
+    return create_outer_shell_reference_body_from_spec(
+        root_comp,
+        keepout_reference_spec,
+    )
+
+
+def build_outer_shell_contact_reference_source_body_name_candidates():
+    return resolve_outer_shell_reference_source_name_candidates(
+        build_outer_shell_contact_reference_alternative_source_body_name(),
+        build_outer_shell_reference_body_name_candidates(
+            build_outer_shell_contact_reference_source_body_name(),
+        ),
+        build_outer_shell_contact_reference_body_fallback_source_name_candidates(),
+    )
+
+
+def build_outer_shell_contact_reference_source_body_name():
+    return OUTER_SHELL_CONTACT_REFERENCE_SOURCE_BODY_NAME
+
+
+def build_outer_shell_contact_reference_alternative_source_body(root_comp):
+    alternative_source_body = resolve_outer_shell_reference_alternative_source_body(
+        root_comp,
+        build_outer_shell_contact_reference_alternative_source_body_name_candidates(),
+    )
+    if alternative_source_body is not None:
+        return alternative_source_body
+    return create_outer_shell_reference_alternative_source_body(
+        root_comp,
+        find_outer_shell_reference_source_body_by_name(
+            root_comp,
+            build_outer_shell_contact_reference_source_body_name(),
+        ),
+        build_outer_shell_contact_reference_alternative_source_body_name(),
+    )
+
+
+def ensure_outer_shell_contact_reference_alternative_source_body(root_comp):
+    return build_outer_shell_contact_reference_alternative_source_body(root_comp)
+
+
+def ensure_outer_shell_keepout_reference_source_body(root_comp):
+    return build_outer_shell_keepout_reference_resolved_source_body(root_comp)
+
+
+def ensure_outer_shell_contact_reference_source_body(root_comp):
+    return build_outer_shell_contact_reference_resolved_source_body(root_comp)
+
+
+def should_use_outer_shell_contact_reference_alternative_source_body(root_comp):
+    return should_use_outer_shell_reference_alternative_source_body(
+        root_comp,
+        build_outer_shell_contact_reference_alternative_source_body_name_candidates(),
+    )
+
+
+def build_outer_shell_contact_reference_alternative_source_body_name():
+    return OUTER_SHELL_CONTACT_REFERENCE_ALTERNATIVE_SOURCE_BODY_NAME
+
+
+def build_outer_shell_contact_reference_alternative_source_body_runtime_name(root_comp):
+    return getattr(
+        build_outer_shell_contact_reference_alternative_source_body(root_comp),
+        'name',
+        None,
+    )
+
+
+def build_outer_shell_contact_reference_alternative_source_body_name_candidates():
+    return resolve_outer_shell_reference_alternative_source_body_name_candidates(
+        build_outer_shell_contact_reference_alternative_source_body_name(),
+    )
+
+
+def build_outer_shell_contact_reference_source_override_body(root_comp):
+    return resolve_outer_shell_reference_source_override_body(
+        build_outer_shell_contact_reference_override_body(root_comp),
+        build_outer_shell_contact_reference_alternative_source_body(root_comp),
+    )
+
+
+def build_outer_shell_contact_reference_source_override_body_name(root_comp):
+    return getattr(
+        build_outer_shell_contact_reference_source_override_body(root_comp),
+        'name',
+        None,
+    )
+
+
+def build_outer_shell_contact_reference_override_body_runtime_name(root_comp):
+    return getattr(
+        build_outer_shell_contact_reference_override_body(root_comp),
+        'name',
+        None,
+    )
+
+
+def build_outer_shell_contact_reference_source_body(root_comp):
+    # Dedicated substitution point for replacing the contact source with a non-inner-shell artifact later.
+    return resolve_outer_shell_reference_source_body(
+        root_comp,
+        build_outer_shell_contact_reference_source_override_body(root_comp),
+        build_outer_shell_contact_reference_source_body_name_candidates(),
+    )
+
+
+def build_outer_shell_contact_reference_resolved_source_body(root_comp):
+    return build_outer_shell_contact_reference_source_body(root_comp)
+
+
+def build_outer_shell_contact_reference_resolved_source_body_name(root_comp):
+    return resolve_outer_shell_reference_body_runtime_name(
+        build_outer_shell_contact_reference_resolved_source_body(root_comp),
+        build_outer_shell_contact_reference_source_body_name(),
+    )
+
+
+def build_outer_shell_contact_reference_resolved_source_body_names(root_comp):
+    return resolve_outer_shell_reference_body_runtime_names(
+        build_outer_shell_contact_reference_source_body_name_candidates(),
+        tuple(),
+        build_outer_shell_contact_reference_resolved_source_body_name(root_comp),
+    )
+
+
+def should_use_outer_shell_contact_reference_resolved_alternative_source_body(root_comp):
+    return (
+        build_outer_shell_contact_reference_resolved_source_body_name(root_comp)
+        == build_outer_shell_contact_reference_alternative_source_body_name()
+    )
+
+
+def resolve_outer_shell_contact_reference_source_body_override(root_comp):
+    return resolve_outer_shell_reference_override_body(
+        root_comp,
+        build_outer_shell_contact_reference_override_body_name_candidates(),
+    )
+
+
+def build_outer_shell_contact_reference_override_body_name():
+    return OUTER_SHELL_CONTACT_REFERENCE_OVERRIDE_BODY_NAME
+
+
+def build_outer_shell_contact_reference_override_body_name_candidates():
+    # Ordered override-body candidates for the contact source substitution point.
+    return build_outer_shell_reference_body_name_candidates(
+        build_outer_shell_contact_reference_override_body_name(),
+    )
+
+
+def build_outer_shell_contact_reference_override_body(root_comp):
+    return resolve_outer_shell_contact_reference_source_body_override(root_comp)
+
+
+def resolve_outer_shell_reference_override_body(root_comp, override_body_names):
+    # Shared helper for optional override bodies that replace the default source-resolution path.
+    if root_comp is None:
+        return None
+    for override_body_name in override_body_names:
+        resolved_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            override_body_name,
+        )
+        if resolved_body is not None:
+            return resolved_body
+    return None
+
+
+def should_use_outer_shell_contact_reference_source_body(root_comp):
+    return should_use_outer_shell_reference_source_body(
+        root_comp,
+        build_outer_shell_contact_reference_source_override_body(root_comp),
+        build_outer_shell_contact_reference_source_body_name_candidates(),
+    )
+
+
+def should_include_inner_shell_contact_fallback_source_name():
+    return False
+
+
+def build_outer_shell_contact_reference_body_fallback_source_name_candidates():
+    body_names = []
+    if should_include_inner_shell_contact_fallback_source_name():
+        body_names.append(naming.BODY_INNER_SHELL)
+    return build_outer_shell_reference_body_name_candidates(*body_names)
+
+
+def build_outer_shell_contact_reference_body(root_comp):
+    if root_comp is None:
+        return None
+    return helpers.find_body_by_name_or_attribute(
+        root_comp,
+        build_outer_shell_contact_reference_body_name(),
+    )
+
+
+def build_outer_shell_contact_reference_body_name():
+    return OUTER_SHELL_CONTACT_REFERENCE_BODY_NAME
+
+
+def build_outer_shell_contact_reference_body_artifact_spec():
+    return build_outer_shell_reference_body_artifact_spec(
+        build_outer_shell_contact_reference_body_name(),
+        build_outer_shell_contact_reference_source_body_name_candidates(),
+    )
+
+
+def build_outer_shell_contact_reference_body_fallback_artifact_spec():
+    return build_outer_shell_reference_body_artifact_spec(
+        build_outer_shell_contact_reference_body_name(),
+        build_outer_shell_contact_reference_body_fallback_source_name_candidates(),
+    )
+
+
+def create_outer_shell_contact_reference_body(root_comp):
+    contact_reference_spec = build_outer_shell_contact_reference_body_artifact_spec()
+    if should_create_outer_shell_contact_reference_body():
+        return create_outer_shell_contact_reference_body_from_source(
+            root_comp,
+            contact_reference_spec,
+        )
+    return create_outer_shell_reference_body_from_spec(
+        root_comp,
+        contact_reference_spec,
+    )
+
+
+def create_outer_shell_contact_reference_body_from_fallback(root_comp, artifact_spec):
+    # Legacy/default materialization path when no dedicated contact source body is available.
+    artifact_spec = resolve_outer_shell_reference_body_fallback_artifact_spec(
+        artifact_spec,
+        build_outer_shell_contact_reference_body_fallback_artifact_spec(),
+    )
+    return create_outer_shell_reference_body_from_fallback_spec(
+        root_comp,
+        artifact_spec,
+    )
+
+
+def create_outer_shell_contact_reference_body_from_source(root_comp, artifact_spec):
+    # Prefer a dedicated contact source body when present; otherwise fall back to the legacy/default path.
+    if not should_use_outer_shell_contact_reference_source_body(root_comp):
+        return create_outer_shell_contact_reference_body_from_fallback(
+            root_comp,
+            artifact_spec,
+        )
+    return create_outer_shell_reference_body_from_source_or_fallback(
+        root_comp,
+        artifact_spec,
+        build_outer_shell_contact_reference_source_body(root_comp),
+        build_outer_shell_contact_reference_body_fallback_artifact_spec(),
+    )
+
+
+def ensure_outer_shell_runtime_reference_bodies(root_comp):
+    # Ensure the named runtime reference bodies exist before we resolve runtime overrides.
+    ensure_outer_shell_runtime_alternative_source_bodies(root_comp)
+    keepout_reference_body = build_outer_shell_keepout_reference_body(root_comp)
+    if keepout_reference_body is None:
+        keepout_reference_body = create_outer_shell_keepout_reference_body(root_comp)
+    contact_reference_body = build_outer_shell_contact_reference_body(root_comp)
+    if contact_reference_body is None:
+        contact_reference_body = create_outer_shell_contact_reference_body(root_comp)
+
+    return {
+        'keepout_reference_body': keepout_reference_body,
+        'contact_reference_body': contact_reference_body,
+    }
+
+
+def ensure_outer_shell_runtime_alternative_source_bodies(root_comp):
+    return {
+        'keepout_reference_alternative_source_body': ensure_outer_shell_keepout_reference_alternative_source_body(
+            root_comp,
+        ),
+        'contact_reference_alternative_source_body': ensure_outer_shell_contact_reference_alternative_source_body(
+            root_comp,
+        ),
+    }
+
+
+def ensure_outer_shell_runtime_source_bodies(root_comp):
+    return {
+        'keepout_reference_source_body': ensure_outer_shell_keepout_reference_source_body(root_comp),
+        'contact_reference_source_body': ensure_outer_shell_contact_reference_source_body(root_comp),
+    }
+
+
+def build_outer_shell_runtime_reference_artifacts(root_comp):
+    # Collect named runtime artifacts that may already exist in the design tree.
+    runtime_alternative_source_bodies = ensure_outer_shell_runtime_alternative_source_bodies(root_comp)
+    runtime_source_bodies = ensure_outer_shell_runtime_source_bodies(root_comp)
+    runtime_reference_bodies = ensure_outer_shell_runtime_reference_bodies(root_comp)
+    keepout_reference_body = build_outer_shell_runtime_keepout_reference_body(
+        runtime_reference_bodies,
+    )
+    contact_reference_body = build_outer_shell_runtime_contact_reference_body(
+        runtime_reference_bodies,
+    )
+    keepout_reference_source_body = runtime_source_bodies['keepout_reference_source_body']
+    contact_reference_source_body = runtime_source_bodies['contact_reference_source_body']
+    section_reference_sketch = build_outer_shell_runtime_reference_section_sketch(root_comp)
+
+    return {
+        'section_reference_sketch_name': build_outer_shell_runtime_reference_section_sketch_runtime_name(
+            section_reference_sketch,
+        ),
+        'keepout_reference_override_body_name': build_outer_shell_runtime_keepout_reference_override_body_runtime_name(
+            root_comp,
+        ),
+        'keepout_reference_alternative_source_body': (
+            runtime_alternative_source_bodies['keepout_reference_alternative_source_body']
+        ),
+        'keepout_reference_alternative_source_body_name': (
+            build_outer_shell_runtime_keepout_reference_alternative_source_body_runtime_name(
+                runtime_alternative_source_bodies['keepout_reference_alternative_source_body'],
+            )
+        ),
+        'keepout_reference_has_alternative_source_body': (
+            runtime_alternative_source_bodies['keepout_reference_alternative_source_body']
+            is not None
+        ),
+        'keepout_reference_source_body': build_outer_shell_runtime_keepout_reference_resolved_source_body(
+            root_comp,
+        ),
+        'keepout_reference_source_body_name': build_outer_shell_keepout_reference_resolved_source_body_name(
+            root_comp,
+        ),
+        'keepout_reference_source_body_names': (
+            build_outer_shell_keepout_reference_resolved_source_body_names(root_comp)
+        ),
+        'keepout_reference_has_source_body': (
+            build_outer_shell_runtime_keepout_reference_resolved_source_body(root_comp)
+            is not None
+        ),
+        'keepout_reference_uses_alternative_source_body': (
+            should_use_outer_shell_keepout_reference_resolved_alternative_source_body(root_comp)
+        ),
+        'keepout_reference_is_separation_ready': (
+            ensure_outer_shell_keepout_reference_alternative_source_body(root_comp) is not None
+            and should_use_outer_shell_keepout_reference_resolved_alternative_source_body(root_comp)
+        ),
+        'keepout_reference_body_name': build_outer_shell_runtime_keepout_reference_body_runtime_name(
+            keepout_reference_body,
+        ),
+        'contact_reference_override_body_name': build_outer_shell_runtime_contact_reference_override_body_runtime_name(
+            root_comp,
+        ),
+        'contact_reference_alternative_source_body': (
+            runtime_alternative_source_bodies['contact_reference_alternative_source_body']
+        ),
+        'contact_reference_alternative_source_body_name': (
+            build_outer_shell_runtime_contact_reference_alternative_source_body_runtime_name(
+                runtime_alternative_source_bodies['contact_reference_alternative_source_body'],
+            )
+        ),
+        'contact_reference_has_alternative_source_body': (
+            runtime_alternative_source_bodies['contact_reference_alternative_source_body']
+            is not None
+        ),
+        'contact_reference_source_body': build_outer_shell_runtime_contact_reference_resolved_source_body(
+            root_comp,
+        ),
+        'contact_reference_source_body_name': build_outer_shell_contact_reference_resolved_source_body_name(
+            root_comp,
+        ),
+        'contact_reference_source_body_names': (
+            build_outer_shell_contact_reference_resolved_source_body_names(root_comp)
+        ),
+        'contact_reference_has_source_body': (
+            build_outer_shell_runtime_contact_reference_resolved_source_body(root_comp)
+            is not None
+        ),
+        'contact_reference_uses_alternative_source_body': (
+            should_use_outer_shell_contact_reference_resolved_alternative_source_body(root_comp)
+        ),
+        'contact_reference_is_separation_ready': (
+            ensure_outer_shell_contact_reference_alternative_source_body(root_comp) is not None
+            and should_use_outer_shell_contact_reference_resolved_alternative_source_body(root_comp)
+        ),
+        'contact_reference_body_name': build_outer_shell_runtime_contact_reference_body_runtime_name(
+            contact_reference_body,
+        ),
+    }
+
+
+def build_outer_shell_runtime_reference_overrides(root_comp):
+    # Map runtime artifacts into the override names consumed by the generic reference builder.
+    runtime_reference_artifacts = build_outer_shell_runtime_reference_artifacts(root_comp)
+    return {
+        'section_source_sketch_name': (
+            build_outer_shell_runtime_reference_section_source_sketch_name(
+                runtime_reference_artifacts,
+            )
+            or OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME
+        ),
+        'keepout_source_body_names': build_outer_shell_keepout_runtime_reference_resolved_source_body_names(
+            runtime_reference_artifacts,
+        ),
+        'contact_source_body_names': build_outer_shell_contact_runtime_reference_resolved_source_body_names(
+            runtime_reference_artifacts,
+        ),
+    }
+
+
+def build_outer_shell_runtime_reference_separation_status(root_comp):
+    runtime_reference_artifacts = build_outer_shell_runtime_reference_artifacts(root_comp)
+    return build_outer_shell_runtime_reference_separation_status_from_artifacts(
+        runtime_reference_artifacts,
+    )
+
+
+def build_outer_shell_runtime_reference_separation_status_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return build_outer_shell_runtime_reference_separation_status_entries(
+        runtime_reference_artifacts,
+    )
+
+
+def build_outer_shell_runtime_reference_separation_status_entries(
+    runtime_reference_artifacts,
+):
+    return {
+        prefix: build_outer_shell_runtime_reference_separation_status_entry_from_artifacts(
+            runtime_reference_artifacts,
+            prefix,
+        )
+        for prefix in build_outer_shell_runtime_reference_separation_prefixes()
+    }
+
+
+def build_outer_shell_runtime_reference_separation_status_entry_from_artifacts(
+    runtime_reference_artifacts,
+    prefix,
+):
+    separation_status_entry_builder = (
+        resolve_outer_shell_runtime_reference_separation_status_entry_builder(prefix)
+    )
+    return separation_status_entry_builder(runtime_reference_artifacts)
+
+
+def resolve_outer_shell_runtime_reference_separation_status_entry_builder(prefix):
+    if prefix == build_outer_shell_keepout_runtime_reference_separation_prefix():
+        return build_outer_shell_keepout_runtime_reference_separation_status_from_artifacts
+    if prefix == build_outer_shell_contact_runtime_reference_separation_prefix():
+        return build_outer_shell_contact_runtime_reference_separation_status_from_artifacts
+    raise RuntimeError(f'Unsupported outer shell runtime reference separation prefix: {prefix}')
+
+
+def build_outer_shell_keepout_runtime_reference_separation_status_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return build_outer_shell_runtime_reference_separation_status_entry_values_from_artifacts(
+        runtime_reference_artifacts,
+        build_outer_shell_keepout_runtime_reference_separation_prefix(),
+    )
+
+
+def build_outer_shell_contact_runtime_reference_separation_status_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return build_outer_shell_runtime_reference_separation_status_entry_values_from_artifacts(
+        runtime_reference_artifacts,
+        build_outer_shell_contact_runtime_reference_separation_prefix(),
+    )
+
+
+def build_outer_shell_runtime_reference_separation_status_entry_values_from_artifacts(
+    runtime_reference_artifacts,
+    prefix,
+):
+    return {
+        build_outer_shell_runtime_reference_separation_source_body_name_key(): build_outer_shell_runtime_reference_separation_status_artifact_value(
+            runtime_reference_artifacts,
+            prefix,
+            build_outer_shell_runtime_reference_separation_source_body_name_key(),
+        ),
+        build_outer_shell_runtime_reference_separation_alternative_source_body_name_key(): (
+            build_outer_shell_runtime_reference_separation_status_artifact_value(
+                runtime_reference_artifacts,
+                prefix,
+                build_outer_shell_runtime_reference_separation_alternative_source_body_name_key(),
+            )
+        ),
+        build_outer_shell_runtime_reference_separation_has_source_body_key(): build_outer_shell_runtime_reference_separation_status_artifact_value(
+            runtime_reference_artifacts,
+            prefix,
+            build_outer_shell_runtime_reference_separation_has_source_body_key(),
+        ),
+        build_outer_shell_runtime_reference_separation_has_alternative_source_body_key(): build_outer_shell_runtime_reference_separation_status_artifact_value(
+            runtime_reference_artifacts,
+            prefix,
+            build_outer_shell_runtime_reference_separation_has_alternative_source_body_key(),
+        ),
+        build_outer_shell_runtime_reference_separation_uses_alternative_source_body_key(): build_outer_shell_runtime_reference_separation_status_artifact_value(
+            runtime_reference_artifacts,
+            prefix,
+            build_outer_shell_runtime_reference_separation_uses_alternative_source_body_key(),
+        ),
+        build_outer_shell_runtime_reference_separation_is_ready_key(): build_outer_shell_runtime_reference_separation_status_artifact_value(
+            runtime_reference_artifacts,
+            prefix,
+            build_outer_shell_runtime_reference_separation_is_separation_ready_artifact_key(),
+        ),
+    }
+
+
+def build_outer_shell_runtime_reference_separation_status_artifact_value(
+    runtime_reference_artifacts,
+    prefix,
+    suffix,
+):
+    return runtime_reference_artifacts[f'{prefix}_reference_{suffix}']
+
+
+def is_outer_shell_runtime_reference_separation_ready(root_comp):
+    separation_status = build_outer_shell_runtime_reference_separation_status(root_comp)
+    return is_outer_shell_runtime_reference_separation_ready_from_status(
+        separation_status,
+    )
+
+
+def is_outer_shell_runtime_reference_separation_ready_from_artifacts(
+    runtime_reference_artifacts,
+):
+    separation_status = build_outer_shell_runtime_reference_separation_status_from_artifacts(
+        runtime_reference_artifacts,
+    )
+    return is_outer_shell_runtime_reference_separation_ready_from_status(
+        separation_status,
+    )
+
+
+def is_outer_shell_runtime_reference_separation_ready_from_status(
+    separation_status,
+):
+    return all(
+        separation_status[prefix][
+            build_outer_shell_runtime_reference_separation_is_ready_key()
+        ]
+        for prefix in build_outer_shell_runtime_reference_separation_prefixes()
+    )
+
+
+def build_outer_shell_keepout_runtime_reference_separation_prefix():
+    return 'keepout'
+
+
+def build_outer_shell_contact_runtime_reference_separation_prefix():
+    return 'contact'
+
+
+def build_outer_shell_runtime_reference_separation_prefixes():
+    return (
+        build_outer_shell_keepout_runtime_reference_separation_prefix(),
+        build_outer_shell_contact_runtime_reference_separation_prefix(),
+    )
+
+
+def build_outer_shell_runtime_reference_separation_summary(root_comp):
+    separation_status = build_outer_shell_runtime_reference_separation_status(root_comp)
+    return build_outer_shell_runtime_reference_separation_summary_from_status(
+        separation_status,
+    )
+
+
+def build_outer_shell_runtime_reference_separation_summary_from_artifacts(
+    runtime_reference_artifacts,
+):
+    separation_status = build_outer_shell_runtime_reference_separation_status_from_artifacts(
+        runtime_reference_artifacts,
+    )
+    return build_outer_shell_runtime_reference_separation_summary_from_status(
+        separation_status,
+    )
+
+
+def build_outer_shell_runtime_reference_separation_summary_from_status(
+    separation_status,
+):
+    summary_entries = build_outer_shell_runtime_reference_separation_summary_entries(
+        separation_status,
+    )
+    return {
+        build_outer_shell_runtime_reference_separation_is_ready_key(): is_outer_shell_runtime_reference_separation_ready_from_status(
+            separation_status,
+        ),
+        build_outer_shell_runtime_reference_separation_summary_key(
+            build_outer_shell_keepout_runtime_reference_separation_prefix(),
+            'source_body_name',
+        ): build_outer_shell_runtime_reference_separation_summary_entry_value(
+            summary_entries,
+            build_outer_shell_keepout_runtime_reference_separation_prefix(),
+            'source_body_name',
+        ),
+        build_outer_shell_runtime_reference_separation_summary_key(
+            build_outer_shell_keepout_runtime_reference_separation_prefix(),
+            'alternative_source_body_name',
+        ): (
+            build_outer_shell_runtime_reference_separation_summary_entry_value(
+                summary_entries,
+                build_outer_shell_keepout_runtime_reference_separation_prefix(),
+                'alternative_source_body_name',
+            )
+        ),
+        build_outer_shell_runtime_reference_separation_summary_key(
+            build_outer_shell_contact_runtime_reference_separation_prefix(),
+            'source_body_name',
+        ): build_outer_shell_runtime_reference_separation_summary_entry_value(
+            summary_entries,
+            build_outer_shell_contact_runtime_reference_separation_prefix(),
+            'source_body_name',
+        ),
+        build_outer_shell_runtime_reference_separation_summary_key(
+            build_outer_shell_contact_runtime_reference_separation_prefix(),
+            'alternative_source_body_name',
+        ): (
+            build_outer_shell_runtime_reference_separation_summary_entry_value(
+                summary_entries,
+                build_outer_shell_contact_runtime_reference_separation_prefix(),
+                'alternative_source_body_name',
+            )
+        ),
+    }
+
+
+def build_outer_shell_runtime_reference_separation_summary_entries(
+    separation_status,
+):
+    return {
+        prefix: build_outer_shell_runtime_reference_separation_summary_entry(
+            separation_status[prefix],
+        )
+        for prefix in build_outer_shell_runtime_reference_separation_prefixes()
+    }
+
+
+def build_outer_shell_runtime_reference_separation_summary_entry_value(
+    summary_entries,
+    prefix,
+    key,
+):
+    return summary_entries[prefix][key]
+
+
+def build_outer_shell_runtime_reference_separation_source_body_name_key():
+    return 'source_body_name'
+
+
+def build_outer_shell_runtime_reference_separation_alternative_source_body_name_key():
+    return 'alternative_source_body_name'
+
+
+def build_outer_shell_runtime_reference_separation_has_source_body_key():
+    return 'has_source_body'
+
+
+def build_outer_shell_runtime_reference_separation_has_alternative_source_body_key():
+    return 'has_alternative_source_body'
+
+
+def build_outer_shell_runtime_reference_separation_uses_alternative_source_body_key():
+    return 'uses_alternative_source_body'
+
+
+def build_outer_shell_runtime_reference_separation_is_ready_key():
+    return 'is_ready'
+
+
+def build_outer_shell_runtime_reference_separation_is_separation_ready_artifact_key():
+    return 'is_separation_ready'
+
+
+def build_outer_shell_runtime_reference_separation_summary_key(prefix, key):
+    return f'{prefix}_{key}'
+
+
+def build_outer_shell_runtime_reference_separation_summary_entry(
+    separation_status_entry,
+):
+    return {
+        build_outer_shell_runtime_reference_separation_source_body_name_key(): build_outer_shell_runtime_reference_separation_summary_entry_source_body_name(
+            separation_status_entry,
+        ),
+        build_outer_shell_runtime_reference_separation_alternative_source_body_name_key(): (
+            build_outer_shell_runtime_reference_separation_summary_entry_alternative_source_body_name(
+                separation_status_entry,
+            )
+        ),
+    }
+
+
+def build_outer_shell_runtime_reference_separation_summary_entry_source_body_name(
+    separation_status_entry,
+):
+    return separation_status_entry[
+        build_outer_shell_runtime_reference_separation_source_body_name_key()
+    ]
+
+
+def build_outer_shell_runtime_reference_separation_summary_entry_alternative_source_body_name(
+    separation_status_entry,
+):
+    return separation_status_entry[
+        build_outer_shell_runtime_reference_separation_alternative_source_body_name_key()
+    ]
+
+
+def build_outer_shell_runtime_reference_separation_report(root_comp):
+    separation_summary = build_outer_shell_runtime_reference_separation_summary(root_comp)
+    return build_outer_shell_runtime_reference_separation_report_from_summary(
+        separation_summary,
+    )
+
+
+def build_outer_shell_runtime_reference_separation_report_from_artifacts(
+    runtime_reference_artifacts,
+):
+    separation_summary = build_outer_shell_runtime_reference_separation_summary_from_artifacts(
+        runtime_reference_artifacts,
+    )
+    return build_outer_shell_runtime_reference_separation_report_from_summary(
+        separation_summary,
+    )
+
+
+def build_outer_shell_runtime_reference_separation_report_from_summary(
+    separation_summary,
+):
+    report_entries = build_outer_shell_runtime_reference_separation_report_entries(
+        separation_summary,
+    )
+    return {
+        build_outer_shell_runtime_reference_separation_is_ready_key(): separation_summary[
+            build_outer_shell_runtime_reference_separation_is_ready_key()
+        ],
+        build_outer_shell_keepout_runtime_reference_separation_prefix(): (
+            build_outer_shell_runtime_reference_separation_report_entry_value(
+                report_entries,
+                build_outer_shell_keepout_runtime_reference_separation_prefix(),
+            )
+        ),
+        build_outer_shell_contact_runtime_reference_separation_prefix(): (
+            build_outer_shell_runtime_reference_separation_report_entry_value(
+                report_entries,
+                build_outer_shell_contact_runtime_reference_separation_prefix(),
+            )
+        ),
+    }
+
+
+def build_outer_shell_runtime_reference_separation_report_entries(
+    separation_summary,
+):
+    return {
+        prefix: build_outer_shell_runtime_reference_separation_report_entry_from_summary(
+            separation_summary,
+            prefix,
+        )
+        for prefix in build_outer_shell_runtime_reference_separation_prefixes()
+    }
+
+
+def build_outer_shell_runtime_reference_separation_report_entry_value(
+    report_entries,
+    prefix,
+):
+    return report_entries[prefix]
+
+
+def build_outer_shell_runtime_reference_separation_report_entry_from_summary(
+    separation_summary,
+    prefix,
+):
+    return build_outer_shell_runtime_reference_separation_report_entry(
+        separation_summary[
+            build_outer_shell_runtime_reference_separation_summary_key(
+                prefix,
+                'source_body_name',
+            )
+        ],
+        separation_summary[
+            build_outer_shell_runtime_reference_separation_summary_key(
+                prefix,
+                'alternative_source_body_name',
+            )
+        ],
+    )
+
+
+def build_outer_shell_runtime_reference_separation_report_entry(
+    source_body_name,
+    alternative_source_body_name,
+):
+    return {
+        build_outer_shell_runtime_reference_separation_source_body_name_key(): source_body_name,
+        build_outer_shell_runtime_reference_separation_alternative_source_body_name_key(): alternative_source_body_name,
+    }
+
+
+def build_outer_shell_keepout_runtime_reference_source_body_names(runtime_reference_artifacts):
+    return resolve_outer_shell_reference_source_name_candidates(
+        build_outer_shell_keepout_runtime_reference_override_body_name(runtime_reference_artifacts),
+        (
+            build_outer_shell_keepout_runtime_reference_alternative_source_body_name(
+                runtime_reference_artifacts,
+            ),
+        ),
+        (
+            build_outer_shell_keepout_runtime_reference_source_body_name(runtime_reference_artifacts),
+            build_outer_shell_keepout_runtime_reference_body_name(runtime_reference_artifacts),
+            build_outer_shell_keepout_reference_body_name(),
+        ),
+    )
+
+
+def build_outer_shell_keepout_runtime_reference_resolved_source_body_names(runtime_reference_artifacts):
+    return build_outer_shell_keepout_runtime_reference_source_body_names(runtime_reference_artifacts)
+
+
+def build_outer_shell_keepout_runtime_reference_resolved_source_body(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_source_body']
+
+
+def build_outer_shell_keepout_runtime_reference_alternative_source_body_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['keepout_reference_alternative_source_body']
+
+
+def has_outer_shell_keepout_runtime_reference_alternative_source_body(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['keepout_reference_has_alternative_source_body']
+
+
+def build_outer_shell_keepout_runtime_reference_alternative_source_body_name_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['keepout_reference_alternative_source_body_name']
+
+
+def build_outer_shell_keepout_runtime_reference_resolved_source_body_name_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['keepout_reference_source_body_name']
+
+
+def build_outer_shell_keepout_runtime_reference_resolved_source_body_names_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['keepout_reference_source_body_names']
+
+
+def has_outer_shell_keepout_runtime_reference_source_body(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_has_source_body']
+
+
+def should_use_outer_shell_keepout_runtime_reference_alternative_source_body(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_uses_alternative_source_body']
+
+
+def is_outer_shell_keepout_runtime_reference_separation_ready(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_is_separation_ready']
+
+
+def should_use_outer_shell_keepout_runtime_reference_alternative_source_body_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return should_use_outer_shell_keepout_runtime_reference_alternative_source_body(
+        runtime_reference_artifacts,
+    )
+
+
+def build_outer_shell_keepout_runtime_reference_override_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_override_body_name']
+
+
+def build_outer_shell_keepout_runtime_reference_alternative_source_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_alternative_source_body_name']
+
+
+def build_outer_shell_keepout_runtime_reference_source_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_source_body_name']
+
+
+def build_outer_shell_keepout_runtime_reference_source_body_names_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return build_outer_shell_keepout_runtime_reference_resolved_source_body_names_from_artifacts(
+        runtime_reference_artifacts,
+    )
+
+
+def build_outer_shell_keepout_runtime_reference_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['keepout_reference_body_name']
+
+
+def build_outer_shell_contact_runtime_reference_source_body_names(runtime_reference_artifacts):
+    return resolve_outer_shell_reference_source_name_candidates(
+        build_outer_shell_contact_runtime_reference_override_body_name(runtime_reference_artifacts),
+        (
+            build_outer_shell_contact_runtime_reference_alternative_source_body_name(
+                runtime_reference_artifacts,
+            ),
+        ),
+        (
+            build_outer_shell_contact_runtime_reference_source_body_name(runtime_reference_artifacts),
+            build_outer_shell_contact_runtime_reference_body_name(runtime_reference_artifacts),
+            build_outer_shell_contact_reference_body_name(),
+        ),
+    )
+
+
+def build_outer_shell_contact_runtime_reference_resolved_source_body_names(runtime_reference_artifacts):
+    return build_outer_shell_contact_runtime_reference_source_body_names(runtime_reference_artifacts)
+
+
+def build_outer_shell_contact_runtime_reference_resolved_source_body(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_source_body']
+
+
+def build_outer_shell_contact_runtime_reference_alternative_source_body_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['contact_reference_alternative_source_body']
+
+
+def has_outer_shell_contact_runtime_reference_alternative_source_body(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['contact_reference_has_alternative_source_body']
+
+
+def build_outer_shell_contact_runtime_reference_alternative_source_body_name_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['contact_reference_alternative_source_body_name']
+
+
+def build_outer_shell_contact_runtime_reference_resolved_source_body_name_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['contact_reference_source_body_name']
+
+
+def build_outer_shell_contact_runtime_reference_resolved_source_body_names_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return runtime_reference_artifacts['contact_reference_source_body_names']
+
+
+def has_outer_shell_contact_runtime_reference_source_body(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_has_source_body']
+
+
+def should_use_outer_shell_contact_runtime_reference_alternative_source_body(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_uses_alternative_source_body']
+
+
+def is_outer_shell_contact_runtime_reference_separation_ready(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_is_separation_ready']
+
+
+def should_use_outer_shell_contact_runtime_reference_alternative_source_body_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return should_use_outer_shell_contact_runtime_reference_alternative_source_body(
+        runtime_reference_artifacts,
+    )
+
+
+def build_outer_shell_contact_runtime_reference_override_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_override_body_name']
+
+
+def build_outer_shell_contact_runtime_reference_alternative_source_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_alternative_source_body_name']
+
+
+def build_outer_shell_contact_runtime_reference_source_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_source_body_name']
+
+
+def build_outer_shell_contact_runtime_reference_source_body_names_from_artifacts(
+    runtime_reference_artifacts,
+):
+    return build_outer_shell_contact_runtime_reference_resolved_source_body_names_from_artifacts(
+        runtime_reference_artifacts,
+    )
+
+
+def build_outer_shell_contact_runtime_reference_body_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['contact_reference_body_name']
+
+
+def build_outer_shell_runtime_reference_section_source_sketch_name(runtime_reference_artifacts):
+    return runtime_reference_artifacts['section_reference_sketch_name']
+
+
+def build_outer_shell_runtime_reference_section_sketch_runtime_name(section_reference_sketch):
+    return getattr(section_reference_sketch, 'name', None)
+
+
+def build_outer_shell_runtime_reference_body_runtime_name(reference_body):
+    return getattr(reference_body, 'name', None)
+
+
+def build_outer_shell_runtime_reference_section_sketch(root_comp):
+    return find_sketch_by_name_or_attribute(
+        root_comp,
+        OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME,
+    )
+
+
+def build_outer_shell_runtime_keepout_reference_body(runtime_reference_bodies):
+    return runtime_reference_bodies['keepout_reference_body']
+
+
+def build_outer_shell_runtime_contact_reference_body(runtime_reference_bodies):
+    return runtime_reference_bodies['contact_reference_body']
+
+
+def build_outer_shell_runtime_keepout_reference_override_body_runtime_name(root_comp):
+    return build_outer_shell_keepout_reference_override_body_runtime_name(root_comp)
+
+
+def build_outer_shell_runtime_keepout_reference_alternative_source_body_runtime_name(
+    alternative_source_body,
+):
+    return build_outer_shell_runtime_reference_body_runtime_name(alternative_source_body)
+
+
+def build_outer_shell_runtime_keepout_reference_source_body(root_comp):
+    return build_outer_shell_keepout_reference_resolved_source_body(root_comp)
+
+
+def build_outer_shell_runtime_keepout_reference_resolved_source_body(root_comp):
+    return build_outer_shell_keepout_reference_resolved_source_body(root_comp)
+
+
+def build_outer_shell_runtime_keepout_reference_source_body_runtime_name(reference_body):
+    return build_outer_shell_runtime_reference_body_runtime_name(reference_body)
+
+
+def build_outer_shell_runtime_keepout_reference_body_runtime_name(reference_body):
+    return build_outer_shell_runtime_reference_body_runtime_name(reference_body)
+
+
+def build_outer_shell_runtime_contact_reference_override_body_runtime_name(root_comp):
+    return build_outer_shell_contact_reference_override_body_runtime_name(root_comp)
+
+
+def build_outer_shell_runtime_contact_reference_alternative_source_body_runtime_name(
+    alternative_source_body,
+):
+    return build_outer_shell_runtime_reference_body_runtime_name(alternative_source_body)
+
+
+def build_outer_shell_runtime_contact_reference_source_body(root_comp):
+    return build_outer_shell_contact_reference_resolved_source_body(root_comp)
+
+
+def build_outer_shell_runtime_contact_reference_resolved_source_body(root_comp):
+    return build_outer_shell_contact_reference_resolved_source_body(root_comp)
+
+
+def build_outer_shell_runtime_contact_reference_source_body_runtime_name(reference_body):
+    return build_outer_shell_runtime_reference_body_runtime_name(reference_body)
+
+
+def build_outer_shell_runtime_contact_reference_body_runtime_name(reference_body):
+    return build_outer_shell_runtime_reference_body_runtime_name(reference_body)
+
+
+def build_outer_shell_section_reference(
+    root_comp=None,
+    section_source_body=None,
+    section_source_body_name=None,
+    section_source_sketch=None,
+    section_source_sketch_name=None,
+    default_source_body=None,
+    default_source_body_name=None,
+):
+    # Build the section subset of the reference bundle, layering explicit overrides on top of defaults.
+    reference = {}
+
+    default_reference = build_default_outer_shell_section_reference_from_source(
+        root_comp=root_comp,
+        default_source_body=default_source_body,
+        default_source_body_name=default_source_body_name,
+    )
+
+    resolved_section_source_body = section_source_body or default_reference.get('section_source_body')
+    resolved_section_source_body_name = section_source_body_name or default_reference.get('section_source_body_name')
+    resolved_section_source_sketch = section_source_sketch
+    if resolved_section_source_sketch is None:
+        resolved_section_source_sketch = default_reference.get('section_source_sketch')
+    resolved_section_source_sketch_name = section_source_sketch_name
+    if resolved_section_source_sketch_name is None:
+        resolved_section_source_sketch_name = default_reference.get('section_source_sketch_name')
+
+    if resolved_section_source_body is not None:
+        reference['section_source_body'] = resolved_section_source_body
+    if resolved_section_source_body_name:
+        reference['section_source_body_name'] = resolved_section_source_body_name
+    if resolved_section_source_sketch is not None:
+        reference['section_source_sketch'] = resolved_section_source_sketch
+    if resolved_section_source_sketch_name:
+        reference['section_source_sketch_name'] = resolved_section_source_sketch_name
+
+    return reference
+
+
+def build_outer_shell_reference_body_name_candidates(*body_names):
+    # Preserve caller order while removing empty and duplicate candidate names.
+    unique_body_names = []
+    for body_name in body_names:
+        if not body_name:
+            continue
+        if body_name in unique_body_names:
+            continue
+        unique_body_names.append(body_name)
+    return tuple(unique_body_names)
+
+
+def resolve_preferred_outer_shell_reference_body(
+    root_comp,
+    body_name_candidates,
+):
+    # Resolve the first existing body from the ordered preferred-name candidates.
+    if root_comp is None:
+        return None, None
+
+    for body_name in body_name_candidates:
+        resolved_body = helpers.find_body_by_name_or_attribute(root_comp, body_name)
+        if resolved_body is not None:
+            return resolved_body, body_name
+
+    return None, None
+
+
+def build_default_outer_shell_named_body_reference_from_source(
+    root_comp=None,
+    preferred_body_name=None,
+    default_source_body=None,
+    default_source_body_name=None,
+    body_key=None,
+    body_name_key=None,
+    body_names_key=None,
+    include_body_tuple=False,
+):
+    # Prefer a dedicated named reference body when present; otherwise fall back to the default source.
+    reference = {}
+
+    preferred_source_body_name_candidates = build_outer_shell_reference_body_name_candidates(
+        preferred_body_name,
+        default_source_body_name,
+    )
+    preferred_source_body, preferred_source_body_name = resolve_preferred_outer_shell_reference_body(
+        root_comp,
+        preferred_source_body_name_candidates,
+    )
+    if preferred_source_body is not None:
+        default_source_body = preferred_source_body
+        default_source_body_name = preferred_source_body_name
+
+    if (
+        default_source_body is None
+        and root_comp is not None
+        and default_source_body_name
+    ):
+        default_source_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            default_source_body_name,
+        )
+
+    if default_source_body is not None and body_key:
+        reference[body_key] = default_source_body
+        if include_body_tuple and body_key.endswith('_body'):
+            plural_key = '{}ies'.format(body_key[:-1]) if body_key.endswith('y') else '{}s'.format(body_key)
+            reference[plural_key] = (default_source_body,)
+
+    if default_source_body_name and body_name_key:
+        reference[body_name_key] = default_source_body_name
+
+    if body_names_key and preferred_source_body_name_candidates:
+        reference[body_names_key] = preferred_source_body_name_candidates
+
+    return reference
+
+
+def build_default_outer_shell_section_reference_from_source(
+    root_comp=None,
+    default_source_body=None,
+    default_source_body_name=None,
+):
+    # Prefer the persisted section-reference sketch; only fall back to building it from the default source body.
+    reference = {
+        'section_source_sketch_name': OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME,
+    }
+
+    existing_section_source_sketch = None
+    if root_comp is not None:
+        existing_section_source_sketch = find_sketch_by_name_or_attribute(
+            root_comp,
+            OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME,
+        )
+
+    if existing_section_source_sketch is not None:
+        reference['section_source_sketch'] = existing_section_source_sketch
+        return reference
+
+    if (
+        default_source_body is None
+        and root_comp is not None
+        and default_source_body_name
+    ):
+        default_source_body = helpers.find_body_by_name_or_attribute(
+            root_comp,
+            default_source_body_name,
+        )
+
+    if default_source_body is not None:
+        reference['section_source_body'] = default_source_body
+    if default_source_body_name:
+        reference['section_source_body_name'] = default_source_body_name
+
+    if root_comp is not None and default_source_body is not None:
+        section_source_sketch = create_outer_shell_section_reference_sketch(
+            root_comp,
+            default_source_body,
+        )
+        reference['section_source_sketch'] = section_source_sketch
+
+    return reference
+
+
+def build_outer_shell_keepout_reference(
+    root_comp=None,
+    keepout_source_body=None,
+    keepout_source_body_name=None,
+    keepout_source_bodies=None,
+    keepout_source_body_names=None,
+    default_source_body=None,
+    default_source_body_name=None,
+):
+    # Build the keepout subset of the reference bundle, layering explicit overrides on top of defaults.
+    reference = {}
+
+    default_reference = build_default_outer_shell_keepout_reference_from_source(
+        root_comp=root_comp,
+        default_source_body=default_source_body,
+        default_source_body_name=default_source_body_name,
+    )
+
+    resolved_keepout_source_body = keepout_source_body or default_reference.get('keepout_source_body')
+    resolved_keepout_source_body_name = resolve_outer_shell_reference_body_runtime_name(
+        resolved_keepout_source_body,
+        keepout_source_body_name,
+    )
+    if resolved_keepout_source_body_name is None:
+        resolved_keepout_source_body_name = default_reference.get('keepout_source_body_name')
+    resolved_keepout_source_bodies = keepout_source_bodies
+    if resolved_keepout_source_bodies is None:
+        resolved_keepout_source_bodies = default_reference.get('keepout_source_bodies')
+    resolved_keepout_source_body_names = keepout_source_body_names
+    if resolved_keepout_source_body_names is None and root_comp is not None:
+        resolved_keepout_source_body_names = build_outer_shell_keepout_reference_resolved_source_body_names(
+            root_comp,
+        )
+    if resolved_keepout_source_body_names is None:
+        resolved_keepout_source_body_names = resolve_outer_shell_reference_body_runtime_names(
+            None,
+            default_reference.get('keepout_source_body_names'),
+            resolved_keepout_source_body_name,
+        )
+
+    if resolved_keepout_source_body is not None:
+        reference['keepout_source_body'] = resolved_keepout_source_body
+    if resolved_keepout_source_body_name:
+        reference['keepout_source_body_name'] = resolved_keepout_source_body_name
+    if resolved_keepout_source_bodies is not None:
+        reference['keepout_source_bodies'] = tuple(resolved_keepout_source_bodies)
+    if resolved_keepout_source_body_names is not None:
+        reference['keepout_source_body_names'] = tuple(resolved_keepout_source_body_names)
+
+    return reference
+
+
+def resolve_outer_shell_reference_body_runtime_name(reference_body, fallback_body_name):
+    resolved_body_name = getattr(reference_body, 'name', None)
+    if resolved_body_name is not None:
+        return resolved_body_name
+    return fallback_body_name
+
+
+def resolve_outer_shell_reference_body_runtime_names(
+    primary_body_names,
+    fallback_body_names,
+    preferred_body_name=None,
+):
+    body_names = primary_body_names
+    if body_names is None:
+        body_names = fallback_body_names
+    if body_names is None and preferred_body_name is None:
+        return None
+
+    resolved_body_names = build_outer_shell_reference_body_name_candidates(
+        preferred_body_name,
+        *(body_names or ()),
+    )
+    if resolved_body_names:
+        return resolved_body_names
+    return None
+
+
+def build_default_outer_shell_keepout_reference_from_source(
+    root_comp=None,
+    default_source_body=None,
+    default_source_body_name=None,
+):
+    # Build the default keepout reference by preferring the dedicated named body and otherwise using the default source.
+    return build_default_outer_shell_named_body_reference_from_source(
+        root_comp=root_comp,
+        preferred_body_name=build_outer_shell_keepout_reference_body_name(),
+        default_source_body=default_source_body,
+        default_source_body_name=default_source_body_name,
+        body_key='keepout_source_body',
+        body_name_key='keepout_source_body_name',
+        body_names_key='keepout_source_body_names',
+        include_body_tuple=True,
+    )
+
+
+def build_outer_shell_contact_reference(
+    root_comp=None,
+    contact_source_body=None,
+    contact_source_body_name=None,
+    contact_source_body_names=None,
+    default_source_body=None,
+    default_source_body_name=None,
+):
+    # Build the contact subset of the reference bundle, layering explicit overrides on top of defaults.
+    reference = {}
+
+    default_reference = build_default_outer_shell_contact_reference_from_source(
+        root_comp=root_comp,
+        default_source_body=default_source_body,
+        default_source_body_name=default_source_body_name,
+    )
+
+    resolved_contact_source_body = contact_source_body or default_reference.get('contact_source_body')
+    resolved_contact_source_body_name = resolve_outer_shell_reference_body_runtime_name(
+        resolved_contact_source_body,
+        contact_source_body_name,
+    )
+    if resolved_contact_source_body_name is None:
+        resolved_contact_source_body_name = default_reference.get('contact_source_body_name')
+    resolved_contact_source_body_names = contact_source_body_names
+    if resolved_contact_source_body_names is None and root_comp is not None:
+        resolved_contact_source_body_names = build_outer_shell_contact_reference_resolved_source_body_names(
+            root_comp,
+        )
+    if resolved_contact_source_body_names is None:
+        resolved_contact_source_body_names = resolve_outer_shell_reference_body_runtime_names(
+            None,
+            default_reference.get('contact_source_body_names'),
+            resolved_contact_source_body_name,
+        )
+
+    if resolved_contact_source_body is not None:
+        reference['contact_source_body'] = resolved_contact_source_body
+    if resolved_contact_source_body_name:
+        reference['contact_source_body_name'] = resolved_contact_source_body_name
+    if resolved_contact_source_body_names is not None:
+        reference['contact_source_body_names'] = tuple(resolved_contact_source_body_names)
+
+    return reference
+
+
+def build_default_outer_shell_contact_reference_from_source(
+    root_comp=None,
+    default_source_body=None,
+    default_source_body_name=None,
+):
+    # Build the default contact reference by preferring the dedicated named body and otherwise using the default source.
+    return build_default_outer_shell_named_body_reference_from_source(
+        root_comp=root_comp,
+        preferred_body_name=build_outer_shell_contact_reference_body_name(),
+        default_source_body=default_source_body,
+        default_source_body_name=default_source_body_name,
+        body_key='contact_source_body',
+        body_name_key='contact_source_body_name',
+        body_names_key='contact_source_body_names',
+    )
+
+
+def get_outer_shell_reference_lid_slope_points_mm(outer_shell_reference=None):
+    # Return the lid-slope reference points from the bundle, falling back to the built-in defaults.
+    if outer_shell_reference is None:
+        return tuple(INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM)
+    return tuple(
+        outer_shell_reference.get(
+            'lid_slope_points_mm',
+            INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM,
+        )
+    )
+
+
+def resolve_outer_shell_reference_body(
+    root_comp,
+    outer_shell_reference=None,
+    body_key=None,
+    body_name_key=None,
+    body_names_key=None,
+    fallback_body=None,
+):
+    # Resolve a single body handle from the reference bundle, then fall back to names or the explicit fallback.
+    if outer_shell_reference is None:
+        return fallback_body
+
+    source_body = outer_shell_reference.get(body_key)
+    if source_body is not None:
+        return source_body
+
+    if root_comp is not None and body_name_key:
+        source_body_name = outer_shell_reference.get(body_name_key)
+        if source_body_name:
+            resolved_body = helpers.find_body_by_name_or_attribute(root_comp, source_body_name)
+            if resolved_body is not None:
+                return resolved_body
+
+    if root_comp is not None and body_names_key:
+        for source_body_name in outer_shell_reference.get(body_names_key, ()):
+            if not source_body_name:
+                continue
+            resolved_body = helpers.find_body_by_name_or_attribute(root_comp, source_body_name)
+            if resolved_body is not None:
+                return resolved_body
+
+    return fallback_body
+
+
+def get_outer_shell_reference_section_body(root_comp=None, outer_shell_reference=None, fallback_body=None):
+    # Return the resolved section reference body, falling back to the explicit single-body input when needed.
+    return resolve_outer_shell_reference_body(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        body_key='section_source_body',
+        body_name_key='section_source_body_name',
+        fallback_body=fallback_body,
+    )
+
+
+def get_outer_shell_reference_section_sketch(root_comp, outer_shell_reference=None):
+    # Return the resolved section reference sketch, falling back to the named default sketch when needed.
+    if outer_shell_reference is not None:
+        section_sketch = outer_shell_reference.get('section_source_sketch')
+        if section_sketch is not None:
+            return section_sketch
+
+        sketch_name = outer_shell_reference.get('section_source_sketch_name')
+        if sketch_name:
+            found_sketch = find_sketch_by_name_or_attribute(root_comp, sketch_name)
+            if found_sketch is not None:
+                return found_sketch
+
+    return find_sketch_by_name_or_attribute(
+        root_comp,
+        OUTER_SHELL_SECTION_REFERENCE_SKETCH_NAME,
+    )
+
+
+def get_outer_shell_reference_keepout_body(root_comp=None, outer_shell_reference=None, fallback_body=None):
+    # Return the resolved keepout reference body, falling back to the explicit single-body input when needed.
+    return resolve_outer_shell_reference_body(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        body_key='keepout_source_body',
+        body_name_key='keepout_source_body_name',
+        fallback_body=fallback_body,
+    )
+
+
+def resolve_outer_shell_reference_bodies(
+    root_comp,
+    outer_shell_reference=None,
+    bodies_key=None,
+    body_names_key=None,
+    fallback_bodies=None,
+):
+    # Resolve zero or more bodies from the reference bundle, then fall back to name lists or explicit fallback bodies.
+    resolved_bodies = []
+    seen_tokens = set()
+
+    def add_body(body):
+        if body is None:
+            return
+        entity_token = getattr(body, 'entityToken', None)
+        if entity_token is not None and entity_token in seen_tokens:
+            return
+        if entity_token is not None:
+            seen_tokens.add(entity_token)
+        resolved_bodies.append(body)
+
+    if outer_shell_reference is not None and bodies_key:
+        for body in outer_shell_reference.get(bodies_key, ()):
+            add_body(body)
+
+    if (
+        outer_shell_reference is not None
+        and root_comp is not None
+        and body_names_key
+    ):
+        for body_name in outer_shell_reference.get(body_names_key, ()):
+            if not body_name:
+                continue
+            add_body(helpers.find_body_by_name_or_attribute(root_comp, body_name))
+
+    for fallback_body in fallback_bodies or ():
+        add_body(fallback_body)
+
+    return tuple(resolved_bodies)
+
+
+def get_outer_shell_reference_keepout_bodies(root_comp=None, outer_shell_reference=None, fallback_body=None):
+    # Return every keepout reference body we can resolve, falling back to a single resolved body when needed.
+    keepout_reference_bodies = resolve_outer_shell_reference_bodies(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        bodies_key='keepout_source_bodies',
+        body_names_key='keepout_source_body_names',
+        fallback_bodies=((fallback_body,) if fallback_body is not None else ()),
+    )
+    if keepout_reference_bodies:
+        return keepout_reference_bodies
+
+    keepout_reference_body = get_outer_shell_reference_keepout_body(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        fallback_body=fallback_body,
+    )
+    if keepout_reference_body is None:
+        return tuple()
+    return (keepout_reference_body,)
+
+
+def get_outer_shell_reference_contact_body(root_comp=None, outer_shell_reference=None, fallback_body=None):
+    # Return the resolved contact reference body, falling back to the explicit single-body input when needed.
+    return resolve_outer_shell_reference_body(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        body_key='contact_source_body',
+        body_name_key='contact_source_body_name',
+        body_names_key='contact_source_body_names',
+        fallback_body=fallback_body,
+    )
+
+
+def require_outer_shell_reference_source(
+    source_value,
+    source_label,
+):
+    # Shared guard for entrypoints that require some source from which an outer-shell reference can be built.
+    if source_value is None:
+        raise RuntimeError(f'{source_label} is required.')
+    return source_value
+
+
+def ensure_outer_shell_reference(
+    root_comp,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    # Normalize legacy/compat inputs into the reference-first bundle used by the main path.
+    if outer_shell_reference is not None:
+        return outer_shell_reference
+
+    require_outer_shell_reference_source(
+        inner_shell_body,
+        'outer shell reference source',
+    )
+    return build_outer_shell_reference(
+        root_comp=root_comp,
+        inner_shell_body=inner_shell_body,
+    )
 
 
 def point3d_to_mm_tuple(point):
@@ -1079,32 +3302,60 @@ def project_face_edges_by_token(sketch, face):
     return projected_by_token
 
 
-def find_inner_contact_faces(outer_shell_body, inner_shell_body, tolerance_cm):
+def find_outer_shell_contact_reference_faces(
+    outer_shell_body,
+    contact_reference_body,
+    tolerance_cm,
+):
     contact_faces = []
-    inner_faces = get_face_collection(inner_shell_body)
+    reference_faces = get_face_collection(contact_reference_body)
 
     for outer_face in get_face_collection(outer_shell_body):
         sample_point = outer_face.pointOnFace
         if not sample_point:
             continue
 
-        for inner_face in inner_faces:
-            if inner_face.isPointOnFace(sample_point, tolerance_cm):
+        for reference_face in reference_faces:
+            if reference_face.isPointOnFace(sample_point, tolerance_cm):
                 contact_faces.append(outer_face)
                 break
 
     if not contact_faces:
-        raise RuntimeError('外殻内殻接面を取得できませんでした。')
+        raise RuntimeError('外殻接触参照面を取得できませんでした。')
 
     return contact_faces
 
 
-def offset_contact_faces(root_comp, outer_shell_body, inner_shell_body):
-    app = adsk.core.Application.get()
-    tolerance_cm = max(app.pointTolerance, 1e-5)
-    contact_faces = find_inner_contact_faces(
+def find_inner_contact_faces(outer_shell_body, inner_shell_body, tolerance_cm):
+    # Legacy compatibility shim; no internal callers remain in this repo.
+    return find_outer_shell_contact_reference_faces(
         outer_shell_body,
         inner_shell_body,
+        tolerance_cm,
+    )
+
+
+def offset_outer_shell_contact_faces(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    contact_reference_body = get_outer_shell_reference_contact_body(
+        root_comp,
+        outer_shell_reference,
+        fallback_body=inner_shell_body,
+    )
+    require_outer_shell_reference_source(
+        contact_reference_body,
+        'contact reference body',
+    )
+
+    app = adsk.core.Application.get()
+    tolerance_cm = max(app.pointTolerance, 1e-5)
+    contact_faces = find_outer_shell_contact_reference_faces(
+        outer_shell_body,
+        contact_reference_body,
         tolerance_cm,
     )
 
@@ -1119,6 +3370,16 @@ def offset_contact_faces(root_comp, outer_shell_body, inner_shell_body):
             helpers.add_named_attribute(face, OUTER_SHELL_CONTACT_FACE_NAME)
 
     return offset_feature
+
+
+def offset_contact_faces(root_comp, outer_shell_body, inner_shell_body=None, outer_shell_reference=None):
+    # Legacy compatibility shim; no internal callers remain in this repo.
+    return offset_outer_shell_contact_faces(
+        root_comp,
+        outer_shell_body,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
 
 
 def extrude_xy_face_in_negative_z(root_comp, face, distance_mm, tolerance=1e-6):
@@ -1539,8 +3800,32 @@ def clone_intersection_curve_as_sketch_geometry(sketch, sketch_curve):
     raise RuntimeError('未対応の断面カーブ種類です。')
 
 
-def project_inner_shell_section_to_sketch(sketch, inner_shell_body):
-    projected_entities = sketch.intersectWithSketchPlane([inner_shell_body])
+def project_outer_shell_section_reference_to_sketch(
+    sketch,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    section_reference_sketch = get_outer_shell_reference_section_sketch(
+        sketch.parentComponent,
+        outer_shell_reference=outer_shell_reference,
+    )
+    if section_reference_sketch is not None:
+        for index in range(section_reference_sketch.sketchCurves.count):
+            clone_intersection_curve_as_sketch_geometry(
+                sketch,
+                section_reference_sketch.sketchCurves.item(index),
+            )
+        return
+
+    section_reference_body = get_outer_shell_reference_section_body(
+        sketch.parentComponent,
+        outer_shell_reference,
+        fallback_body=inner_shell_body,
+    )
+    if section_reference_body is None:
+        raise RuntimeError('section reference body is required.')
+
+    projected_entities = sketch.intersectWithSketchPlane([section_reference_body])
     projected_curves = []
 
     for entity in projected_entities:
@@ -1553,6 +3838,15 @@ def project_inner_shell_section_to_sketch(sketch, inner_shell_body):
 
     for sketch_curve in projected_curves:
         sketch_curve.deleteMe()
+
+
+def project_inner_shell_section_to_sketch(sketch, inner_shell_body=None, outer_shell_reference=None):
+    # Legacy compatibility shim; no internal callers remain in this repo.
+    return project_outer_shell_section_reference_to_sketch(
+        sketch,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
 
 
 def project_body_section_to_sketch(sketch, body):
@@ -2165,14 +4459,20 @@ def build_outer_shell_reference_points(params):
     }
 
 
-def create_outer_shell_sketch(root_comp, inner_shell_body, params):
+def create_outer_shell_sketch(root_comp, inner_shell_body=None, params=None, outer_shell_reference=None):
+    if params is None:
+        params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
     sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
     sketch.name = OUTER_SHELL_BASE_STRUCTURE_SKETCH_NAME
 
     points = build_outer_shell_reference_points(params)
     lines = sketch.sketchCurves.sketchLines
 
-    project_inner_shell_section_to_sketch(sketch, inner_shell_body)
+    project_outer_shell_section_reference_to_sketch(
+        sketch,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
 
     line_segments = [
         ('B', 'I'),
@@ -2194,15 +4494,41 @@ def create_outer_shell_sketch(root_comp, inner_shell_body, params):
     return sketch
 
 
-def cut_body_with_inner_shell(root_comp, target_body, inner_shell_body):
+def cut_body_with_keepout_reference(
+    root_comp,
+    target_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    keepout_reference_bodies = get_outer_shell_reference_keepout_bodies(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        fallback_body=inner_shell_body,
+    )
+    require_outer_shell_reference_source(
+        keepout_reference_bodies,
+        'keepout reference body',
+    )
+
     tool_body_collection = adsk.core.ObjectCollection.create()
-    tool_body_collection.add(inner_shell_body)
+    for keepout_reference_body in keepout_reference_bodies:
+        tool_body_collection.add(keepout_reference_body)
 
     combine_features = root_comp.features.combineFeatures
     combine_input = combine_features.createInput(target_body, tool_body_collection)
     combine_input.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
     combine_input.isKeepToolBodies = True
     combine_features.add(combine_input)
+
+
+def cut_body_with_inner_shell(root_comp, target_body, inner_shell_body=None, outer_shell_reference=None):
+    # Legacy compatibility shim; no internal callers remain in this repo.
+    return cut_body_with_keepout_reference(
+        root_comp,
+        target_body,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
 
 
 def cut_target_body_with_tool_bodies(root_comp, target_body, tool_bodies, keep_tool_bodies=False):
@@ -2251,7 +4577,7 @@ def join_tool_bodies_into_target(root_comp, target_body, tool_bodies, keep_tool_
     return target_body
 
 
-def extrude_outer_shell_profile(root_comp, sketch, inner_shell_body):
+def extrude_outer_shell_profile(root_comp, sketch, inner_shell_body=None, outer_shell_reference=None):
     target_point = create_point_mm(-80.0, 0.0, 0.0)
     profile = get_profile_nearest_point(sketch, target_point)
 
@@ -2268,9 +4594,19 @@ def extrude_outer_shell_profile(root_comp, sketch, inner_shell_body):
 
     feature = extrudes.add(extrude_input)
     body = get_body_from_feature(feature)
-    cut_body_with_inner_shell(root_comp, body, inner_shell_body)
+    cut_body_with_keepout_reference(
+        root_comp,
+        body,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     helpers.set_body_identity(body, naming.BODY_OUTER_SHELL)
-    offset_contact_faces(root_comp, body, inner_shell_body)
+    offset_outer_shell_contact_faces(
+        root_comp,
+        body,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     return body
 
 
@@ -2420,28 +4756,21 @@ def create_outer_perimeter_reference_circle_sketch(root_comp):
     return sketch
 
 
-def cut_outer_perimeter_reference_circle(root_comp, sketch, outer_shell_body, inner_shell_body=None):
+def cut_outer_perimeter_reference_circle(
+    root_comp,
+    sketch,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
-
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
-
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
     profile = get_profile_nearest_point(
         sketch,
@@ -2462,13 +4791,6 @@ def cut_outer_perimeter_reference_circle(root_comp, sketch, outer_shell_body, in
         adsk.fusion.ExtentDirections.PositiveExtentDirection,
     )
     extrudes.add(extrude_input)
-
-    if moved_inner_shell_body is not None:
-        move_body_by_translation(
-            root_comp,
-            moved_inner_shell_body,
-            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
 
 def add_outer_perimeter_reference_circle_fillet(root_comp, outer_shell_body):
@@ -2690,68 +5012,47 @@ def cut_profile_via_negative_y_sweep(
     outer_shell_body,
     cut_distance_mm,
     inner_shell_body=None,
+    outer_shell_reference=None,
 ):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
 
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
+    centroid = sketch.sketchToModelSpace(profile.areaProperties().centroid)
+    path_plane = create_offset_plane_from_yz(root_comp, centroid.x * 10.0)
+    path_sketch = root_comp.sketches.add(path_plane)
+
+    start_point = path_sketch.modelToSketchSpace(centroid)
+    end_point = path_sketch.modelToSketchSpace(
+        adsk.core.Point3D.create(
+            centroid.x,
+            centroid.y - mm_to_cm(cut_distance_mm),
+            centroid.z,
         )
+    )
+    path_line = path_sketch.sketchCurves.sketchLines.addByTwoPoints(
+        start_point,
+        end_point,
+    )
+    path = root_comp.features.createPath(path_line)
 
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
-    try:
-        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_OUTER_SHELL,
-        ) or current_outer_shell_body
-
-        centroid = sketch.sketchToModelSpace(profile.areaProperties().centroid)
-        path_plane = create_offset_plane_from_yz(root_comp, centroid.x * 10.0)
-        path_sketch = root_comp.sketches.add(path_plane)
-
-        start_point = path_sketch.modelToSketchSpace(centroid)
-        end_point = path_sketch.modelToSketchSpace(
-            adsk.core.Point3D.create(
-                centroid.x,
-                centroid.y - mm_to_cm(cut_distance_mm),
-                centroid.z,
-            )
-        )
-        path_line = path_sketch.sketchCurves.sketchLines.addByTwoPoints(
-            start_point,
-            end_point,
-        )
-        path = root_comp.features.createPath(path_line)
-
-        sweeps = root_comp.features.sweepFeatures
-        sweep_input = sweeps.createInput(
-            profile,
-            path,
-            adsk.fusion.FeatureOperations.CutFeatureOperation,
-        )
-        sweep_input.participantBodies = [current_outer_shell_body]
-        sweeps.add(sweep_input)
-    finally:
-        if moved_inner_shell_body is not None:
-            move_body_by_translation(
-                root_comp,
-                moved_inner_shell_body,
-                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-            )
+    sweeps = root_comp.features.sweepFeatures
+    sweep_input = sweeps.createInput(
+        profile,
+        path,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+    )
+    sweep_input.participantBodies = [current_outer_shell_body]
+    sweeps.add(sweep_input)
 
 
 def create_body_via_negative_y_sweep(root_comp, sketch, profile, distance_mm):
@@ -2832,7 +5133,14 @@ def extrude_outer_shell_bottom_outer_slope(root_comp, outer_shell_body):
     ) or current_outer_shell_body
 
 
-def cut_outer_shell_bottom_outer_slope_regions(root_comp, outer_shell_body, inner_shell_body=None):
+def cut_outer_shell_bottom_outer_slope_regions(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
@@ -2842,69 +5150,45 @@ def cut_outer_shell_bottom_outer_slope_regions(root_comp, outer_shell_body, inne
         root_comp,
         naming.BODY_OUTER_SHELL,
     ) or outer_shell_body
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
 
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
+    y_cut_sketch = create_outer_shell_bottom_outer_slope_y_cut_sketch(root_comp)
+    y_cut_profile = get_profile_containing_point(
+        y_cut_sketch,
+        to_sketch_space(y_cut_sketch, OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_PROFILE_TARGET_MM),
+    )
+    y_cut_body = create_body_via_positive_y_sweep(
+        root_comp,
+        y_cut_sketch,
+        y_cut_profile,
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_DISTANCE_MM,
+    )
+    current_outer_shell_body = cut_target_body_with_tool_bodies(
+        root_comp,
+        current_outer_shell_body,
+        [y_cut_body],
+    )
 
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
-    try:
-        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_OUTER_SHELL,
-        ) or current_outer_shell_body
-
-        y_cut_sketch = create_outer_shell_bottom_outer_slope_y_cut_sketch(root_comp)
-        y_cut_profile = get_profile_containing_point(
-            y_cut_sketch,
-            to_sketch_space(y_cut_sketch, OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_PROFILE_TARGET_MM),
-        )
-        y_cut_body = create_body_via_positive_y_sweep(
-            root_comp,
-            y_cut_sketch,
-            y_cut_profile,
-            OUTER_SHELL_BOTTOM_OUTER_SLOPE_Y_CUT_DISTANCE_MM,
-        )
-        current_outer_shell_body = cut_target_body_with_tool_bodies(
-            root_comp,
-            current_outer_shell_body,
-            [y_cut_body],
-        )
-
-        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_OUTER_SHELL,
-        ) or current_outer_shell_body
-        triangle_cut_sketch = create_outer_shell_bottom_outer_slope_triangle_cut_sketch(root_comp)
-        triangle_cut_profile = get_largest_profile(triangle_cut_sketch)
-        triangle_cut_body = create_body_via_positive_y_sweep(
-            root_comp,
-            triangle_cut_sketch,
-            triangle_cut_profile,
-            OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_DISTANCE_MM,
-        )
-        current_outer_shell_body = cut_target_body_with_tool_bodies(
-            root_comp,
-            current_outer_shell_body,
-            [triangle_cut_body],
-        )
-    finally:
-        if moved_inner_shell_body is not None:
-            move_body_by_translation(
-                root_comp,
-                moved_inner_shell_body,
-                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-            )
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
+    triangle_cut_sketch = create_outer_shell_bottom_outer_slope_triangle_cut_sketch(root_comp)
+    triangle_cut_profile = get_largest_profile(triangle_cut_sketch)
+    triangle_cut_body = create_body_via_positive_y_sweep(
+        root_comp,
+        triangle_cut_sketch,
+        triangle_cut_profile,
+        OUTER_SHELL_BOTTOM_OUTER_SLOPE_TRIANGLE_CUT_DISTANCE_MM,
+    )
+    current_outer_shell_body = cut_target_body_with_tool_bodies(
+        root_comp,
+        current_outer_shell_body,
+        [triangle_cut_body],
+    )
 
     return helpers.find_body_by_name_or_attribute(
         root_comp,
@@ -3020,10 +5304,55 @@ def find_lid_slope_face(root_comp, inner_shell_body=None):
     return lid_slope_face
 
 
+def get_lid_slope_reference_plane(
+    root_comp,
+    outer_shell_reference=None,
+    inner_shell_body=None,
+):
+    existing_plane = helpers.find_construction_plane_by_name_or_attribute(
+        root_comp,
+        OUTER_SHELL_LID_SLOPE_REFERENCE_PLANE_NAME,
+    )
+    if existing_plane is not None:
+        return existing_plane
+
+    lid_slope_face = find_lid_slope_face(root_comp, inner_shell_body)
+    if lid_slope_face is not None:
+        planes = root_comp.constructionPlanes
+        plane_input = planes.createInput()
+        plane_input.setByOffset(
+            lid_slope_face,
+            adsk.core.ValueInput.createByReal(0.0),
+        )
+        plane = planes.add(plane_input)
+        plane.name = OUTER_SHELL_LID_SLOPE_REFERENCE_PLANE_NAME
+        helpers.add_named_attribute(plane, OUTER_SHELL_LID_SLOPE_REFERENCE_PLANE_NAME)
+        return plane
+
+    reference_points_mm = get_outer_shell_reference_lid_slope_points_mm(
+        outer_shell_reference
+    )
+    if len(reference_points_mm) >= 3:
+        plane = create_plane_by_three_points(
+            root_comp,
+            reference_points_mm[0],
+            reference_points_mm[1],
+            reference_points_mm[2],
+            name=OUTER_SHELL_LID_SLOPE_REFERENCE_PLANE_NAME,
+        )
+        helpers.add_named_attribute(plane, OUTER_SHELL_LID_SLOPE_REFERENCE_PLANE_NAME)
+        return plane
+
+    if lid_slope_face is None:
+        raise RuntimeError('内殻蓋部斜面を取得できませんでした。')
+    raise RuntimeError('蓋部斜面基準平面を取得できませんでした。')
+
+
 def create_offset_plane_from_lid_slope(
     root_comp,
     plane_name,
     offset_mm,
+    outer_shell_reference=None,
     inner_shell_body=None,
 ):
     existing_plane = helpers.find_construction_plane_by_name_or_attribute(
@@ -3033,11 +5362,12 @@ def create_offset_plane_from_lid_slope(
     if existing_plane is not None:
         return existing_plane
 
-    lid_slope_face = find_lid_slope_face(root_comp, inner_shell_body)
-    if lid_slope_face is None:
-        raise RuntimeError('内殻蓋部斜面を取得できませんでした。')
-
-    geometry = adsk.core.Plane.cast(lid_slope_face.geometry)
+    lid_slope_plane = get_lid_slope_reference_plane(
+        root_comp,
+        outer_shell_reference=outer_shell_reference,
+        inner_shell_body=inner_shell_body,
+    )
+    geometry = adsk.core.Plane.cast(lid_slope_plane.geometry)
     if not geometry:
         raise RuntimeError('内殻蓋部斜面の平面ジオメトリを取得できませんでした。')
 
@@ -3049,7 +5379,7 @@ def create_offset_plane_from_lid_slope(
     planes = root_comp.constructionPlanes
     plane_input = planes.createInput()
     plane_input.setByOffset(
-        lid_slope_face,
+        lid_slope_plane,
         adsk.core.ValueInput.createByReal(offset_value_cm),
     )
     plane = planes.add(plane_input)
@@ -3058,17 +5388,22 @@ def create_offset_plane_from_lid_slope(
     return plane
 
 
-def create_lid_inner_split_plane(root_comp, inner_shell_body=None):
+def create_lid_inner_split_plane(root_comp, inner_shell_body=None, outer_shell_reference=None):
     return create_offset_plane_from_lid_slope(
         root_comp,
         OUTER_SHELL_LID_INNER_PLANE_NAME,
         OUTER_SHELL_LID_INNER_PLANE_Z_OFFSET_MM,
+        outer_shell_reference=outer_shell_reference,
         inner_shell_body=inner_shell_body,
     )
 
 
-def create_lid_gap_plane(root_comp, inner_shell_body=None):
-    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+def create_lid_gap_plane(root_comp, inner_shell_body=None, outer_shell_reference=None):
+    lid_inner_plane = create_lid_inner_split_plane(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     geometry = adsk.core.Plane.cast(lid_inner_plane.geometry)
     if not geometry:
         raise RuntimeError('外殻蓋部斜面内部の平面ジオメトリを取得できませんでした。')
@@ -3078,8 +5413,11 @@ def create_lid_gap_plane(root_comp, inner_shell_body=None):
         raise RuntimeError('外殻蓋部斜面内部の法線を取得できませんでした。')
     normal.normalize()
 
+    reference_points_mm = get_outer_shell_reference_lid_slope_points_mm(
+        outer_shell_reference
+    )
     offset_sketch_points = []
-    for index, reference_point_mm in enumerate(INNER_SHELL_LID_SLOPE_REFERENCE_POINTS_MM[:3]):
+    for index, reference_point_mm in enumerate(reference_points_mm[:3]):
         reference_point = create_point_mm(*reference_point_mm)
         signed_distance = get_signed_distance_to_plane(geometry, reference_point)
         projected_point = adsk.core.Point3D.create(
@@ -3121,7 +5459,12 @@ def create_lid_gap_plane(root_comp, inner_shell_body=None):
     return plane
 
 
-def split_outer_shell_by_lid_inner_plane(root_comp, outer_shell_body, inner_shell_body=None):
+def split_outer_shell_by_lid_inner_plane(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
@@ -3129,7 +5472,11 @@ def split_outer_shell_by_lid_inner_plane(root_comp, outer_shell_body, inner_shel
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
 
-    split_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    split_plane = create_lid_inner_split_plane(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     split_plane_geometry = adsk.core.Plane.cast(split_plane.geometry)
     if not split_plane_geometry:
         raise RuntimeError('外殻分割平面のジオメトリを取得できませんでした。')
@@ -3171,6 +5518,7 @@ def extrude_outer_shell_lid_inner_plane_in_positive_z(
     root_comp,
     outer_shell_body,
     inner_shell_body=None,
+    outer_shell_reference=None,
 ):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -3184,7 +5532,11 @@ def extrude_outer_shell_lid_inner_plane_in_positive_z(
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
 
-    plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    plane = create_lid_inner_split_plane(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     sketch = root_comp.sketches.add(plane)
     sketch.name = OUTER_SHELL_LID_INNER_PLANE_EXTRUDE_SKETCH_NAME
 
@@ -3287,28 +5639,23 @@ def add_bottom_outer_arc_fillet(root_comp, outer_shell_body):
     )
 
 
-def cut_profile_in_negative_y(root_comp, face, profile, outer_shell_body, inner_shell_body=None, cut_distance_mm=None):
+def cut_profile_in_negative_y(
+    root_comp,
+    face,
+    profile,
+    outer_shell_body,
+    inner_shell_body=None,
+    cut_distance_mm=None,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
-
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
-
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
     geometry = adsk.core.Plane.cast(face.geometry)
     if not geometry:
@@ -3336,13 +5683,6 @@ def cut_profile_in_negative_y(root_comp, face, profile, outer_shell_body, inner_
     )
     extrudes.add(extrude_input)
 
-    if moved_inner_shell_body is not None:
-        move_body_by_translation(
-            root_comp,
-            moved_inner_shell_body,
-            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
 
 def cut_profile_in_negative_y_from_sketch(
     root_comp,
@@ -3351,28 +5691,16 @@ def cut_profile_in_negative_y_from_sketch(
     outer_shell_body,
     inner_shell_body=None,
     cut_distance_mm=None,
+    outer_shell_reference=None,
 ):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
-
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
-
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
     plane_geometry = adsk.core.Plane.cast(sketch.referencePlane.geometry)
     if not plane_geometry:
@@ -3400,36 +5728,24 @@ def cut_profile_in_negative_y_from_sketch(
     )
     extrudes.add(extrude_input)
 
-    if moved_inner_shell_body is not None:
-        move_body_by_translation(
-            root_comp,
-            moved_inner_shell_body,
-            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
-
-def cut_xz_face_in_negative_y(root_comp, face, outer_shell_body, distance_mm, inner_shell_body=None, tolerance=1e-6):
+def cut_xz_face_in_negative_y(
+    root_comp,
+    face,
+    outer_shell_body,
+    distance_mm,
+    inner_shell_body=None,
+    tolerance=1e-6,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
-
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
-
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
     geometry = adsk.core.Plane.cast(face.geometry)
     if not geometry:
@@ -3456,36 +5772,24 @@ def cut_xz_face_in_negative_y(root_comp, face, outer_shell_body, distance_mm, in
     )
     extrudes.add(extrude_input)
 
-    if moved_inner_shell_body is not None:
-        move_body_by_translation(
-            root_comp,
-            moved_inner_shell_body,
-            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
-
-def cut_profile_in_negative_x(root_comp, face, profile, outer_shell_body, cut_distance_mm, inner_shell_body=None):
+def cut_profile_in_negative_x(
+    root_comp,
+    face,
+    profile,
+    outer_shell_body,
+    cut_distance_mm,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
-
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
-
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
     geometry = adsk.core.Plane.cast(face.geometry)
     if not geometry:
@@ -3510,13 +5814,6 @@ def cut_profile_in_negative_x(root_comp, face, profile, outer_shell_body, cut_di
         direction,
     )
     extrudes.add(extrude_input)
-
-    if moved_inner_shell_body is not None:
-        move_body_by_translation(
-            root_comp,
-            moved_inner_shell_body,
-            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-        )
 
 
 def cut_profile_in_positive_x(root_comp, face, profile, outer_shell_body, cut_distance_mm):
@@ -4067,6 +6364,7 @@ def cut_outer_shell_yz_rect_region(
     sketch,
     face,
     inner_shell_body=None,
+    outer_shell_reference=None,
 ):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -4088,6 +6386,7 @@ def cut_outer_shell_yz_rect_region(
         outer_shell_body,
         OUTER_SHELL_YZ_RECT_CUT_DISTANCE_MM,
         inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
     )
 
 
@@ -4350,7 +6649,14 @@ def remove_split_outer_shell_fragments(root_comp):
     return kept_body
 
 
-def add_outer_shell_fitting_correction(root_comp, outer_shell_body, inner_shell_body=None):
+def add_outer_shell_fitting_correction(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
@@ -4362,65 +6668,41 @@ def add_outer_shell_fitting_correction(root_comp, outer_shell_body, inner_shell_
     )
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
+    correction_sketch = create_outer_shell_fitting_correction_sketch(root_comp)
+    correction_profile = get_largest_profile(
+        correction_sketch,
+    )
+    cut_profile_in_positive_z(
+        root_comp,
+        correction_sketch,
+        correction_profile,
+        current_outer_shell_body,
+        OUTER_SHELL_FITTING_CORRECTION_CUT_DISTANCE_MM,
+    )
 
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
+    current_outer_shell_body = helpers.find_body_by_name_or_attribute(
+        root_comp,
+        naming.BODY_OUTER_SHELL,
+    ) or current_outer_shell_body
 
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
-    try:
-        correction_sketch = create_outer_shell_fitting_correction_sketch(root_comp)
-        correction_profile = get_largest_profile(
-            correction_sketch,
-        )
-        cut_profile_in_positive_z(
-            root_comp,
-            correction_sketch,
-            correction_profile,
-            current_outer_shell_body,
-            OUTER_SHELL_FITTING_CORRECTION_CUT_DISTANCE_MM,
-        )
-
-        current_outer_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_OUTER_SHELL,
-        ) or current_outer_shell_body
-
-        face_tolerance_cm = mm_to_cm(0.5)
-        face_a = find_planar_face_through_points(
-            current_outer_shell_body,
-            OUTER_SHELL_FITTING_CORRECTION_A_FACE_POINTS_MM,
-            face_tolerance_cm,
-        )
-        face_b = find_planar_face_through_points(
-            current_outer_shell_body,
-            OUTER_SHELL_FITTING_CORRECTION_B_FACE_POINTS_MM,
-            face_tolerance_cm,
-        )
-        loft_cut_between_faces(
-            root_comp,
-            face_a,
-            face_b,
-            current_outer_shell_body,
-        )
-        current_outer_shell_body = remove_split_outer_shell_fragments(root_comp)
-    finally:
-        if moved_inner_shell_body is not None:
-            move_body_by_translation(
-                root_comp,
-                moved_inner_shell_body,
-                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-            )
+    face_tolerance_cm = mm_to_cm(0.5)
+    face_a = find_planar_face_through_points(
+        current_outer_shell_body,
+        OUTER_SHELL_FITTING_CORRECTION_A_FACE_POINTS_MM,
+        face_tolerance_cm,
+    )
+    face_b = find_planar_face_through_points(
+        current_outer_shell_body,
+        OUTER_SHELL_FITTING_CORRECTION_B_FACE_POINTS_MM,
+        face_tolerance_cm,
+    )
+    loft_cut_between_faces(
+        root_comp,
+        face_a,
+        face_b,
+        current_outer_shell_body,
+    )
+    current_outer_shell_body = remove_split_outer_shell_fragments(root_comp)
 
     return current_outer_shell_body
 
@@ -4465,6 +6747,7 @@ def cut_outer_shell_l_button_opening_base_structure_region(
     inner_shell_body,
     sketch,
     face,
+    outer_shell_reference=None,
 ):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -4486,6 +6769,7 @@ def cut_outer_shell_l_button_opening_base_structure_region(
         outer_shell_body,
         inner_shell_body=inner_shell_body,
         cut_distance_mm=OUTER_SHELL_L_BUTTON_OPENING_BASE_CUT_DISTANCE_MM,
+        outer_shell_reference=outer_shell_reference,
     )
 
 
@@ -4680,7 +6964,10 @@ def cut_outer_shell_l_button_opening_inner_spec_region(
     sketch,
     axis_line,
     inner_shell_body=None,
+    outer_shell_reference=None,
 ):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
@@ -4697,21 +6984,6 @@ def cut_outer_shell_l_button_opening_inner_spec_region(
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
 
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
-
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
     profile = get_largest_profile(sketch)
 
     revolves = root_comp.features.revolveFeatures
@@ -4725,19 +6997,13 @@ def cut_outer_shell_l_button_opening_inner_spec_region(
     revolve_input.setAngleExtent(False, angle_value)
     revolves.add(revolve_input)
 
-    if moved_inner_shell_body is not None:
-        move_body_by_translation(
-            root_comp,
-            moved_inner_shell_body,
-            x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
 
 def cut_outer_shell_l_button_opening_y32_region(
     root_comp,
     outer_shell_body,
     sketch,
     inner_shell_body=None,
+    outer_shell_reference=None,
 ):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -4757,6 +7023,7 @@ def cut_outer_shell_l_button_opening_y32_region(
         outer_shell_body,
         inner_shell_body=inner_shell_body,
         cut_distance_mm=OUTER_SHELL_L_BUTTON_OPENING_Y32_CUT_DISTANCE_MM,
+        outer_shell_reference=outer_shell_reference,
     )
 
 
@@ -5517,7 +7784,12 @@ def cut_outer_shell_l_button_opening_slope_region(
     extrudes.add(extrude_input)
 
 
-def cut_outer_shell_y35_face_region(root_comp, outer_shell_body, inner_shell_body=None):
+def cut_outer_shell_y35_face_region(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
@@ -5537,6 +7809,7 @@ def cut_outer_shell_y35_face_region(root_comp, outer_shell_body, inner_shell_bod
         OUTER_SHELL_Y35_FACE_CUT_DISTANCE_MM,
         inner_shell_body=inner_shell_body,
         tolerance=tolerance_cm,
+        outer_shell_reference=outer_shell_reference,
     )
 
 
@@ -5604,13 +7877,22 @@ def extrude_outer_shell_l_button_opening_region(root_comp, outer_shell_body, ske
     extrudes.add(extrude_input)
 
 
-def create_outer_shell_lid_gap_sketch(root_comp, outer_shell_body, inner_shell_body=None):
+def create_outer_shell_lid_gap_sketch(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
         raise RuntimeError('outer_shell_body is required.')
 
-    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    lid_inner_plane = create_lid_inner_split_plane(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     lid_inner_reference_sketch = root_comp.sketches.add(lid_inner_plane)
  
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
@@ -5877,11 +8159,19 @@ def extrude_outer_shell_lid_gap_region(root_comp, outer_shell_body, sketch, plan
     return updated_outer_shell_body
 
 
-def calculate_outer_shell_lid_gap_extension_profile_geometry_mm(root_comp, inner_shell_body=None):
+def calculate_outer_shell_lid_gap_extension_profile_geometry_mm(
+    root_comp,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
 
-    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    lid_inner_plane = create_lid_inner_split_plane(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     lid_inner_reference_sketch = root_comp.sketches.add(lid_inner_plane)
 
     points_3d_mm = {
@@ -5982,13 +8272,22 @@ def calculate_outer_shell_lid_gap_extension_profile_geometry_mm(root_comp, inner
     }
 
 
-def create_outer_shell_lid_gap_extension_sketch(root_comp, outer_shell_body, inner_shell_body=None):
+def create_outer_shell_lid_gap_extension_sketch(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
         raise RuntimeError('outer_shell_body is required.')
 
-    lid_inner_plane = create_lid_inner_split_plane(root_comp, inner_shell_body)
+    lid_inner_plane = create_lid_inner_split_plane(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
     lid_inner_reference_sketch = root_comp.sketches.add(lid_inner_plane)
 
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
@@ -6149,6 +8448,7 @@ def add_outer_shell_lid_gap_extension_fillet(
     sketch,
     plane,
     inner_shell_body=None,
+    outer_shell_reference=None,
 ):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -6171,6 +8471,7 @@ def add_outer_shell_lid_gap_extension_fillet(
     geometry_mm = calculate_outer_shell_lid_gap_extension_profile_geometry_mm(
         root_comp,
         inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
     )
     reference_points_2d = {
         'arc_nm': geometry_mm['arc_nm_midpoint_mm'],
@@ -6247,6 +8548,8 @@ def extrude_outer_shell_lid_gap_extension_region(
     sketch,
     plane,
     profile_target_point,
+    inner_shell_body=None,
+    outer_shell_reference=None,
 ):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
@@ -6298,6 +8601,8 @@ def extrude_outer_shell_lid_gap_extension_region(
         updated_outer_shell_body,
         sketch,
         plane,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
     )
     return updated_outer_shell_body
 
@@ -6596,7 +8901,14 @@ def loft_profiles_new_body(root_comp, profile_a, profile_b):
     return get_body_from_feature(feature)
 
 
-def add_outer_shell_lower_stop_structure(root_comp, outer_shell_body, inner_shell_body=None):
+def add_outer_shell_lower_stop_structure(
+    root_comp,
+    outer_shell_body,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    _ = inner_shell_body
+    _ = outer_shell_reference
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
@@ -6649,77 +8961,53 @@ def add_outer_shell_lower_stop_structure(root_comp, outer_shell_body, inner_shel
         root_comp,
         lower_stop_body,
     )
+    lower_stop_loft_body_1 = loft_profiles_new_body(
+        root_comp,
+        get_largest_profile(support_sketch),
+        get_largest_profile(sketch_1),
+    )
+    lower_stop_loft_body_2 = loft_profiles_new_body(
+        root_comp,
+        get_largest_profile(sketch_3),
+        get_largest_profile(loft_sketch),
+    )
+    current_outer_shell_body = join_tool_bodies_into_target(
+        root_comp,
+        current_outer_shell_body,
+        [lower_stop_body, lower_stop_loft_body_1, lower_stop_loft_body_2],
+    )
 
-    current_inner_shell_body = inner_shell_body
-    if current_inner_shell_body is None:
-        current_inner_shell_body = helpers.find_body_by_name_or_attribute(
-            root_comp,
-            naming.BODY_INNER_SHELL,
-        )
+    arc_profile = get_largest_profile(arc_cut_sketch)
+    cut_profile_in_positive_z(
+        root_comp,
+        arc_cut_sketch,
+        arc_profile,
+        current_outer_shell_body,
+        OUTER_SHELL_LOWER_STOP_ARC_POSITIVE_Z_CUT_DISTANCE_MM,
+    )
+    cut_profile_in_negative_z(
+        root_comp,
+        arc_cut_sketch,
+        arc_profile,
+        current_outer_shell_body,
+        OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM,
+    )
 
-    moved_inner_shell_body = None
-    if current_inner_shell_body is not None:
-        moved_inner_shell_body = move_body_by_translation(
-            root_comp,
-            current_inner_shell_body,
-            x_mm=INNER_SHELL_TEMP_MOVE_X_MM,
-        )
-
-    try:
-        lower_stop_loft_body_1 = loft_profiles_new_body(
-            root_comp,
-            get_largest_profile(support_sketch),
-            get_largest_profile(sketch_1),
-        )
-        lower_stop_loft_body_2 = loft_profiles_new_body(
-            root_comp,
-            get_largest_profile(sketch_3),
-            get_largest_profile(loft_sketch),
-        )
-        current_outer_shell_body = join_tool_bodies_into_target(
-            root_comp,
-            current_outer_shell_body,
-            [lower_stop_body, lower_stop_loft_body_1, lower_stop_loft_body_2],
-        )
-
-        arc_profile = get_largest_profile(arc_cut_sketch)
-        cut_profile_in_positive_z(
-            root_comp,
-            arc_cut_sketch,
-            arc_profile,
-            current_outer_shell_body,
-            OUTER_SHELL_LOWER_STOP_ARC_POSITIVE_Z_CUT_DISTANCE_MM,
-        )
-        cut_profile_in_negative_z(
-            root_comp,
-            arc_cut_sketch,
-            arc_profile,
-            current_outer_shell_body,
-            OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM,
-        )
-
-        circle_profile = get_largest_profile(circle_cut_sketch)
-        cut_profile_in_positive_z(
-            root_comp,
-            circle_cut_sketch,
-            circle_profile,
-            current_outer_shell_body,
-            OUTER_SHELL_LOWER_STOP_CIRCLE_POSITIVE_Z_CUT_DISTANCE_MM,
-        )
-        cut_profile_in_negative_z(
-            root_comp,
-            circle_cut_sketch,
-            circle_profile,
-            current_outer_shell_body,
-            OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM,
-        )
-    finally:
-        if moved_inner_shell_body is not None:
-            move_body_by_translation(
-                root_comp,
-                moved_inner_shell_body,
-                x_mm=-INNER_SHELL_TEMP_MOVE_X_MM,
-            )
+    circle_profile = get_largest_profile(circle_cut_sketch)
+    cut_profile_in_positive_z(
+        root_comp,
+        circle_cut_sketch,
+        circle_profile,
+        current_outer_shell_body,
+        OUTER_SHELL_LOWER_STOP_CIRCLE_POSITIVE_Z_CUT_DISTANCE_MM,
+    )
+    cut_profile_in_negative_z(
+        root_comp,
+        circle_cut_sketch,
+        circle_profile,
+        current_outer_shell_body,
+        OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM,
+    )
 
     return helpers.find_body_by_name_or_attribute(
         root_comp,
@@ -6734,29 +9022,74 @@ def add_outer_shell_l_button_opening_offset_fillet(root_comp, outer_shell_body):
     return
 
 
-def build_outer_shell_base_structure(root_comp, inner_shell_body, params=None):
+def build_outer_shell_base_structure(
+    root_comp,
+    inner_shell_body=None,
+    params=None,
+    outer_shell_reference=None,
+):
+    # Compatibility entrypoint: normalize inputs, then delegate to the reference-first base-structure path.
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
-    if inner_shell_body is None:
-        raise RuntimeError('inner_shell_body is required to build the outer shell base structure.')
+
+    if params is None:
+        params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
+    outer_shell_reference = ensure_outer_shell_reference(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
+    return build_outer_shell_base_structure_from_reference(
+        root_comp,
+        outer_shell_reference,
+        params=params,
+    )
+
+
+def build_outer_shell_base_structure_from_reference(root_comp, outer_shell_reference, params=None):
+    # Primary base-structure path once the caller already has an outer shell reference bundle.
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
 
     if params is None:
         params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
 
-    sketch = create_outer_shell_sketch(root_comp, inner_shell_body, params)
-    outer_shell_body = extrude_outer_shell_profile(root_comp, sketch, inner_shell_body)
+    sketch = create_outer_shell_sketch(
+        root_comp,
+        None,
+        params,
+        outer_shell_reference=outer_shell_reference,
+    )
+    outer_shell_body = extrude_outer_shell_profile(
+        root_comp,
+        sketch,
+        None,
+        outer_shell_reference=outer_shell_reference,
+    )
     add_outer_perimeter_face(root_comp, outer_shell_body)
     add_bottom_outer_face(root_comp, outer_shell_body)
     reference_circle_sketch = create_outer_perimeter_reference_circle_sketch(root_comp)
     bottom_outer_sketch = create_bottom_outer_face_sketch(root_comp, outer_shell_body)
     extrude_bottom_outer_region(root_comp, bottom_outer_sketch)
-    outer_shell_body = split_outer_shell_by_lid_inner_plane(root_comp, outer_shell_body, inner_shell_body)
+    outer_shell_body = split_outer_shell_by_lid_inner_plane(
+        root_comp,
+        outer_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
+    )
     outer_shell_body = extrude_outer_shell_lid_inner_plane_in_positive_z(
         root_comp,
         outer_shell_body,
-        inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
-    cut_outer_perimeter_reference_circle(root_comp, reference_circle_sketch, outer_shell_body, inner_shell_body)
+    cut_outer_perimeter_reference_circle(
+        root_comp,
+        reference_circle_sketch,
+        outer_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
+    )
     outer_shell_body = cut_outer_shell_by_lid_yz_plane(root_comp, outer_shell_body)
     return outer_shell_body
 
@@ -6764,9 +9097,37 @@ def build_outer_shell_base_structure(root_comp, inner_shell_body, params=None):
 def add_structures_to_outer_shell_base_structure(
     root_comp,
     outer_shell_base_structure_body,
-    inner_shell_body,
+    inner_shell_body=None,
+    params=None,
+    outer_shell_reference=None,
+):
+    # Compatibility entrypoint: normalize inputs, then delegate to the reference-first structure-addition path.
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_base_structure_body is None:
+        raise RuntimeError('outer_shell_base_structure_body is required.')
+
+    _ = params
+    outer_shell_reference = ensure_outer_shell_reference(
+        root_comp,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
+    )
+    return add_structures_to_outer_shell_base_structure_from_reference(
+        root_comp,
+        outer_shell_base_structure_body,
+        outer_shell_reference,
+        params=params,
+    )
+
+
+def add_structures_to_outer_shell_base_structure_from_reference(
+    root_comp,
+    outer_shell_base_structure_body,
+    outer_shell_reference,
     params=None,
 ):
+    # Primary structure-addition path once the caller already has an outer shell reference bundle.
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if outer_shell_base_structure_body is None:
@@ -6820,17 +9181,20 @@ def add_structures_to_outer_shell_base_structure(
     current_outer_shell_body = split_outer_shell_by_lid_inner_plane(
         root_comp,
         current_outer_shell_body,
-        inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     lid_gap_data = create_outer_shell_lid_gap_sketch(
         root_comp,
         current_outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     lid_gap_extension_data = create_outer_shell_lid_gap_extension_sketch(
         root_comp,
         current_outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     opening_base_data = create_outer_shell_l_button_opening_base_structure_sketch(
         root_comp,
@@ -6842,6 +9206,7 @@ def add_structures_to_outer_shell_base_structure(
         inner_shell_body,
         opening_base_data['sketch'],
         opening_base_data['face'],
+        outer_shell_reference=outer_shell_reference,
     )
     add_outer_shell_l_button_opening_base_structure_fillets(
         root_comp,
@@ -6866,7 +9231,8 @@ def add_structures_to_outer_shell_base_structure(
         current_outer_shell_body,
         inner_spec_data['sketch'],
         inner_spec_data['axis_line'],
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     y32_cut_data = create_outer_shell_l_button_opening_y32_cut_sketch(
         root_comp,
@@ -6876,7 +9242,8 @@ def add_structures_to_outer_shell_base_structure(
         root_comp,
         current_outer_shell_body,
         y32_cut_data['sketch'],
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
@@ -6895,11 +9262,14 @@ def add_structures_to_outer_shell_base_structure(
         lid_gap_extension_data['sketch'],
         lid_gap_extension_data['plane'],
         lid_gap_extension_data['extension_profile_target_point'],
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     current_outer_shell_body = add_outer_shell_lower_stop_structure(
         root_comp,
         current_outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     lid_decoration_cut_1_data = create_outer_shell_lid_decoration_cut_1_sketch(
         root_comp,
@@ -6952,7 +9322,8 @@ def add_structures_to_outer_shell_base_structure(
     current_outer_shell_body = add_outer_shell_fitting_correction(
         root_comp,
         current_outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     current_outer_shell_body = extrude_outer_shell_bottom_outer_slope(
         root_comp,
@@ -6961,20 +9332,36 @@ def add_structures_to_outer_shell_base_structure(
     current_outer_shell_body = cut_outer_shell_bottom_outer_slope_regions(
         root_comp,
         current_outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     return current_outer_shell_body
 
 
-def build_outer_shell(root_comp, inner_shell_body, params=None):
-    outer_shell_base_structure_body = build_outer_shell_base_structure(
+def build_outer_shell(root_comp, inner_shell_body=None, params=None, outer_shell_reference=None):
+    # Compatibility entrypoint: normalize inputs, then delegate to the reference-first path.
+    outer_shell_reference = ensure_outer_shell_reference(
         root_comp,
-        inner_shell_body,
-        params,
+        inner_shell_body=inner_shell_body,
+        outer_shell_reference=outer_shell_reference,
     )
-    return add_structures_to_outer_shell_base_structure(
+    return build_outer_shell_from_reference(
+        root_comp,
+        outer_shell_reference,
+        params=params,
+    )
+
+
+def build_outer_shell_from_reference(root_comp, outer_shell_reference, params=None):
+    # Primary entrypoint once the caller already has an outer shell reference bundle.
+    outer_shell_base_structure_body = build_outer_shell_base_structure_from_reference(
+        root_comp,
+        outer_shell_reference,
+        params=params,
+    )
+    return add_structures_to_outer_shell_base_structure_from_reference(
         root_comp,
         outer_shell_base_structure_body,
-        inner_shell_body,
-        params,
+        outer_shell_reference=outer_shell_reference,
+        params=params,
     )

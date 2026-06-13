@@ -139,10 +139,14 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
     root_comp = design.rootComponent
 
     inner_shell_body = inner_shell.build_inner_shell(context)
-    outer_shell_body = outer_shell.build_outer_shell_base_structure(
-        root_comp,
-        inner_shell_body,
-        outer_shell_params
+    # The outer shell now follows the reference-first path instead of consuming the inner shell body directly.
+    outer_shell_reference = outer_shell.build_outer_shell_runtime_reference(
+        root_comp=root_comp,
+    )
+    outer_shell_body = outer_shell.build_outer_shell_base_structure_from_reference(
+        root_comp=root_comp,
+        outer_shell_reference=outer_shell_reference,
+        params=outer_shell_params,
     )
     opening_data = outer_shell.create_outer_shell_l_button_opening_sketch(
         root_comp,
@@ -172,7 +176,8 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
         outer_shell_body,
         yz_rect_cut_data['sketch'],
         yz_rect_cut_data['face'],
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     side_extension_data = outer_shell.create_outer_shell_side_extension_sketch(
         root_comp,
@@ -201,27 +206,32 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
     outer_shell_body = outer_shell.split_outer_shell_by_lid_inner_plane(
         root_comp,
         outer_shell_body,
-        inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     outer_shell_body = outer_shell.extrude_outer_shell_lid_inner_plane_in_positive_z(
         root_comp,
         outer_shell_body,
-        inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     lid_gap_data = outer_shell.create_outer_shell_lid_gap_sketch(
         root_comp,
         outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     lid_gap_extension_data = outer_shell.create_outer_shell_lid_gap_extension_sketch(
         root_comp,
         outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     outer_shell.cut_outer_shell_y35_face_region(
         root_comp,
         outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     slope_cut_data = outer_shell.create_outer_shell_l_button_opening_slope_cut_sketch(
         root_comp,
@@ -242,7 +252,8 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
         outer_shell_body,
         inner_spec_data['sketch'],
         inner_spec_data['axis_line'],
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     y32_cut_data = outer_shell.create_outer_shell_l_button_opening_y32_cut_sketch(
         root_comp,
@@ -252,7 +263,8 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
         root_comp,
         outer_shell_body,
         y32_cut_data['sketch'],
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     outer_shell_body = outer_shell.extrude_outer_shell_lid_gap_region(
         root_comp,
@@ -267,11 +279,14 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
         lid_gap_extension_data['sketch'],
         lid_gap_extension_data['plane'],
         lid_gap_extension_data['extension_profile_target_point'],
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     outer_shell_body = outer_shell.add_outer_shell_lower_stop_structure(
         root_comp,
         outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     lid_decoration_cut_1_data = outer_shell.create_outer_shell_lid_decoration_cut_1_sketch(
         root_comp,
@@ -324,7 +339,8 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
     outer_shell_body = outer_shell.add_outer_shell_fitting_correction(
         root_comp,
         outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
     outer_shell_body = outer_shell.extrude_outer_shell_bottom_outer_slope(
         root_comp,
@@ -333,9 +349,10 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
     outer_shell_body = outer_shell.cut_outer_shell_bottom_outer_slope_regions(
         root_comp,
         outer_shell_body,
-        inner_shell_body=inner_shell_body,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
     )
-    inner_shell.add_inner_shell_lid_revolve_cut(root_comp, inner_shell_body)
+    inner_shell.add_inner_shell_lid_revolve_cut(root_comp)
 
     return {
         naming.BODY_INNER_SHELL: inner_shell_body,
