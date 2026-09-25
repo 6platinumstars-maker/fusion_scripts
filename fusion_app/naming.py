@@ -25,4 +25,8 @@ DEFAULT_GRIP_PARAMS = {
 DEFAULT_OUTER_SHELL_PARAMS = {
     'clearance_mm': 0.2,
     'wall_thickness_mm': 1.0,
+    'base_structure_cd_x_mm': -90.0,
+    'skip_contact_face_offset': False,
+    'skip_lid_inner_plane_positive_extrude': False,
+    'skip_y35_face_cut': False,
 }

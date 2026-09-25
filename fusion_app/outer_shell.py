@@ -189,8 +189,8 @@ OUTER_SHELL_LOWER_STOP_ARC_CUT_DISTANCE_MM = 8.2
 OUTER_SHELL_LOWER_STOP_ARC_POSITIVE_Z_CUT_DISTANCE_MM = 5.0
 OUTER_SHELL_LOWER_STOP_CIRCLE_POSITIVE_Z_CUT_DISTANCE_MM = 30.0
 OUTER_SHELL_LOWER_STOP_SKETCH1_POINTS_MM = {
-    'A': (-29.854, -35.00, 24.037),
-    'B': (-29.854, -25.9, 24.794),
+    'A': (-29.854, -35.00, 23.639),
+    'B': (-29.854, -25.9, 24.395),
     'C': (-29.854, -35.00, -6.0),
     'D': (-29.854, -25.9, -6.0),
 }
@@ -200,7 +200,7 @@ OUTER_SHELL_LOWER_STOP_SKETCH2_POINTS_MM = {
     'G': (-29.854, -25.9, -3.2),
 }
 OUTER_SHELL_LOWER_STOP_SKETCH3_POINTS_MM = {
-    'H': (-28.706, -22.709, 25.059),
+    'H': (-28.706, -22.709, 24.652),
     'I': (-28.706, -22.709, 22.059),
     'J': (-29.854, -25.9, 21.794),
 }
@@ -230,6 +230,14 @@ OUTER_SHELL_END_CUT_POINT_D_MM = (-51.8, 32.455, 26.442)
 OUTER_SHELL_END_CUT_PROFILE_TARGET_MM = (-51.8, 33.7, 23.6)
 OUTER_SHELL_END_CUT_MARGIN_MM = 0.8
 OUTER_SHELL_END_CUT_DISTANCE_MM = 3.0
+OUTER_SHELL_X90_POSITIVE_X_CUT_SKETCH_NAME = '外殻X-90切り取り'
+OUTER_SHELL_X90_POSITIVE_X_CUT_PLANE_X_MM = -90.0
+OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_A_MM = (-90.0, 40.0, 35.0)
+OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_B_MM = (-90.0, 40.0, -10.0)
+OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_C_MM = (-90.0, -40.0, -10.0)
+OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_D_MM = (-90.0, -40.0, 35.0)
+OUTER_SHELL_X90_POSITIVE_X_CUT_PROFILE_TARGET_MM = (-90.0, 0.0, 12.5)
+OUTER_SHELL_X90_POSITIVE_X_CUT_DISTANCE_MM = 10.0
 OUTER_SHELL_YZ_RECT_CUT_SKETCH_NAME = '外殻YZ矩形切り取り'
 OUTER_SHELL_YZ_RECT_CUT_POINT_E_MM = (-51.8, 28.0, 28.0)
 OUTER_SHELL_YZ_RECT_CUT_POINT_F_MM = (-51.8, 28.0, -6.0)
@@ -4397,11 +4405,15 @@ def vertical_line_circle_intersections(center_mm, radius_mm, x_mm):
 
 def build_outer_shell_reference_points(params):
     clearance_mm = params.get('clearance_mm', naming.DEFAULT_OUTER_SHELL_PARAMS['clearance_mm'])
+    base_structure_cd_x_mm = params.get(
+        'base_structure_cd_x_mm',
+        naming.DEFAULT_OUTER_SHELL_PARAMS['base_structure_cd_x_mm'],
+    )
 
     point_a_mm = (-5.0, -23.0, 0.0)
     point_b_mm = (-5.0, -35.0, 0.0)
-    point_c_mm = (-90.0, -35.0, 0.0)
-    point_d_mm = (-90.0, 35.0, 0.0)
+    point_c_mm = (base_structure_cd_x_mm, -35.0, 0.0)
+    point_d_mm = (base_structure_cd_x_mm, 35.0, 0.0)
     point_e_mm = (-51.8, 35.0, 0.0)
     point_f_mm = (-51.8, 29.0, 0.0)
 
@@ -4601,13 +4613,32 @@ def extrude_outer_shell_profile(root_comp, sketch, inner_shell_body=None, outer_
         outer_shell_reference=outer_shell_reference,
     )
     helpers.set_body_identity(body, naming.BODY_OUTER_SHELL)
+    return body
+
+
+def apply_outer_shell_contact_face_offset(
+    root_comp,
+    outer_shell_body,
+    params=None,
+    inner_shell_body=None,
+    outer_shell_reference=None,
+):
+    if params is None:
+        params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
+
+    if params.get(
+        'skip_contact_face_offset',
+        naming.DEFAULT_OUTER_SHELL_PARAMS['skip_contact_face_offset'],
+    ):
+        return None
+
     offset_outer_shell_contact_faces(
         root_comp,
-        body,
+        outer_shell_body,
         inner_shell_body=inner_shell_body,
         outer_shell_reference=outer_shell_reference,
     )
-    return body
+    return outer_shell_body
 
 
 def add_bottom_outer_face(root_comp, outer_shell_body):
@@ -5517,6 +5548,7 @@ def split_outer_shell_by_lid_inner_plane(
 def extrude_outer_shell_lid_inner_plane_in_positive_z(
     root_comp,
     outer_shell_body,
+    params=None,
     inner_shell_body=None,
     outer_shell_reference=None,
 ):
@@ -5524,6 +5556,14 @@ def extrude_outer_shell_lid_inner_plane_in_positive_z(
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
         raise RuntimeError('outer_shell_body is required.')
+    if params is None:
+        params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
+
+    if params.get(
+        'skip_lid_inner_plane_positive_extrude',
+        naming.DEFAULT_OUTER_SHELL_PARAMS['skip_lid_inner_plane_positive_extrude'],
+    ):
+        return outer_shell_body
 
     current_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
@@ -6320,6 +6360,69 @@ def cut_outer_shell_end_region(
         profile,
         outer_shell_body,
         OUTER_SHELL_END_CUT_DISTANCE_MM,
+    )
+
+
+def create_outer_shell_x90_positive_x_cut_sketch(root_comp, outer_shell_body):
+    _ = outer_shell_body
+    plane = create_offset_plane_from_yz(
+        root_comp,
+        OUTER_SHELL_X90_POSITIVE_X_CUT_PLANE_X_MM,
+        OUTER_SHELL_X90_POSITIVE_X_CUT_SKETCH_NAME,
+    )
+    sketch = root_comp.sketches.add(plane)
+    sketch.name = OUTER_SHELL_X90_POSITIVE_X_CUT_SKETCH_NAME
+
+    lines = sketch.sketchCurves.sketchLines
+    point_a = sketch.sketchPoints.add(
+        to_sketch_space(sketch, OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_A_MM)
+    )
+    point_b = sketch.sketchPoints.add(
+        to_sketch_space(sketch, OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_B_MM)
+    )
+    point_c = sketch.sketchPoints.add(
+        to_sketch_space(sketch, OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_C_MM)
+    )
+    point_d = sketch.sketchPoints.add(
+        to_sketch_space(sketch, OUTER_SHELL_X90_POSITIVE_X_CUT_POINT_D_MM)
+    )
+
+    lines.addByTwoPoints(point_a, point_b)
+    lines.addByTwoPoints(point_b, point_c)
+    lines.addByTwoPoints(point_c, point_d)
+    lines.addByTwoPoints(point_d, point_a)
+
+    return {
+        'sketch': sketch,
+        'face': plane,
+    }
+
+
+def cut_outer_shell_x90_positive_x_region(
+    root_comp,
+    outer_shell_body,
+    sketch,
+    face,
+):
+    if root_comp is None:
+        raise RuntimeError('root_comp is required.')
+    if outer_shell_body is None:
+        raise RuntimeError('outer_shell_body is required.')
+    if sketch is None:
+        raise RuntimeError('sketch is required.')
+    if face is None:
+        raise RuntimeError('face is required.')
+
+    profile = get_profile_containing_point(
+        sketch,
+        to_sketch_space(sketch, OUTER_SHELL_X90_POSITIVE_X_CUT_PROFILE_TARGET_MM),
+    )
+    cut_profile_in_positive_x(
+        root_comp,
+        face,
+        profile,
+        outer_shell_body,
+        OUTER_SHELL_X90_POSITIVE_X_CUT_DISTANCE_MM,
     )
 
 
@@ -7415,31 +7518,31 @@ def create_outer_shell_lid_decoration_cut_3_faces(root_comp, outer_shell_body):
         OUTER_SHELL_LID_DECORATION_CUT_3_POINT_H_PRIME_MM,
     )
 
-    try:
-        face_1 = find_planar_face_through_points(
-            current_outer_shell_body,
-            face_1_points,
-            face_tolerance_cm,
-        )
-    except RuntimeError:
-        face_1 = find_best_planar_face_for_points(
-            current_outer_shell_body,
-            face_1_points,
-            min_alignment=0.9,
-        )
+    def resolve_cut_face(point_set):
+        for tolerance_mm in (0.6, 1.2, 2.0):
+            try:
+                return find_planar_face_through_points(
+                    current_outer_shell_body,
+                    point_set,
+                    mm_to_cm(tolerance_mm),
+                )
+            except RuntimeError:
+                pass
 
-    try:
-        face_2 = find_planar_face_through_points(
-            current_outer_shell_body,
-            face_2_points,
-            face_tolerance_cm,
-        )
-    except RuntimeError:
-        face_2 = find_best_planar_face_for_points(
-            current_outer_shell_body,
-            face_2_points,
-            min_alignment=0.9,
-        )
+        for min_alignment in (0.9, 0.8, 0.7):
+            try:
+                return find_best_planar_face_for_points(
+                    current_outer_shell_body,
+                    point_set,
+                    min_alignment=min_alignment,
+                )
+            except RuntimeError:
+                pass
+
+        raise RuntimeError('蓋部装飾切取り③の参照平面を取得できませんでした。')
+
+    face_1 = resolve_cut_face(face_1_points)
+    face_2 = resolve_cut_face(face_2_points)
 
     return {
         'face_1': face_1,
@@ -7485,12 +7588,26 @@ def cut_outer_shell_lid_decoration_cut_3_region(
     if current_outer_shell_body is None:
         current_outer_shell_body = outer_shell_body
 
-    loft_cut_between_faces(
-        root_comp,
-        face_1,
-        face_2,
-        current_outer_shell_body,
-    )
+    loft_succeeded = False
+    for start_face, end_face in (
+        (face_1, face_2),
+        (face_2, face_1),
+    ):
+        try:
+            loft_cut_between_faces(
+                root_comp,
+                start_face,
+                end_face,
+                current_outer_shell_body,
+            )
+            loft_succeeded = True
+            break
+        except RuntimeError:
+            pass
+
+    if not loft_succeeded:
+        return current_outer_shell_body
+
     updated_outer_shell_body = helpers.find_body_by_name_or_attribute(
         root_comp,
         naming.BODY_OUTER_SHELL,
@@ -7787,6 +7904,7 @@ def cut_outer_shell_l_button_opening_slope_region(
 def cut_outer_shell_y35_face_region(
     root_comp,
     outer_shell_body,
+    params=None,
     inner_shell_body=None,
     outer_shell_reference=None,
 ):
@@ -7794,6 +7912,14 @@ def cut_outer_shell_y35_face_region(
         raise RuntimeError('root_comp is required.')
     if outer_shell_body is None:
         raise RuntimeError('outer_shell_body is required.')
+    if params is None:
+        params = dict(naming.DEFAULT_OUTER_SHELL_PARAMS)
+
+    if params.get(
+        'skip_y35_face_cut',
+        naming.DEFAULT_OUTER_SHELL_PARAMS['skip_y35_face_cut'],
+    ):
+        return outer_shell_body
 
     app = adsk.core.Application.get()
     tolerance_cm = max(app.pointTolerance, 1e-5)
@@ -7811,6 +7937,7 @@ def cut_outer_shell_y35_face_region(
         tolerance=tolerance_cm,
         outer_shell_reference=outer_shell_reference,
     )
+    return outer_shell_body
 
 
 def add_outer_shell_l_button_opening_base_structure_fillets(root_comp, outer_shell_body):
@@ -9066,6 +9193,13 @@ def build_outer_shell_base_structure_from_reference(root_comp, outer_shell_refer
         None,
         outer_shell_reference=outer_shell_reference,
     )
+    apply_outer_shell_contact_face_offset(
+        root_comp,
+        outer_shell_body,
+        params=params,
+        inner_shell_body=None,
+        outer_shell_reference=outer_shell_reference,
+    )
     add_outer_perimeter_face(root_comp, outer_shell_body)
     add_bottom_outer_face(root_comp, outer_shell_body)
     reference_circle_sketch = create_outer_perimeter_reference_circle_sketch(root_comp)
@@ -9080,6 +9214,7 @@ def build_outer_shell_base_structure_from_reference(root_comp, outer_shell_refer
     outer_shell_body = extrude_outer_shell_lid_inner_plane_in_positive_z(
         root_comp,
         outer_shell_body,
+        params=params,
         inner_shell_body=None,
         outer_shell_reference=outer_shell_reference,
     )
@@ -9334,6 +9469,16 @@ def add_structures_to_outer_shell_base_structure_from_reference(
         current_outer_shell_body,
         inner_shell_body=None,
         outer_shell_reference=outer_shell_reference,
+    )
+    x90_positive_x_cut_data = create_outer_shell_x90_positive_x_cut_sketch(
+        root_comp,
+        current_outer_shell_body,
+    )
+    cut_outer_shell_x90_positive_x_region(
+        root_comp,
+        current_outer_shell_body,
+        x90_positive_x_cut_data['sketch'],
+        x90_positive_x_cut_data['face'],
     )
     return current_outer_shell_body
 

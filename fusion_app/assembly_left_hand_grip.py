@@ -352,6 +352,16 @@ def build_inner_and_outer(context=None, outer_shell_params=None):
         inner_shell_body=None,
         outer_shell_reference=outer_shell_reference,
     )
+    x90_positive_x_cut_data = outer_shell.create_outer_shell_x90_positive_x_cut_sketch(
+        root_comp,
+        outer_shell_body,
+    )
+    outer_shell.cut_outer_shell_x90_positive_x_region(
+        root_comp,
+        outer_shell_body,
+        x90_positive_x_cut_data['sketch'],
+        x90_positive_x_cut_data['face'],
+    )
     inner_shell.add_inner_shell_lid_revolve_cut(root_comp)
 
     return {
