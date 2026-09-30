@@ -1,6 +1,4 @@
-import adsk.core
-import traceback
-
+import importlib
 try:
     from .fusion_app import grip_structure
 except ImportError:
@@ -8,11 +6,5 @@ except ImportError:
 
 
 def run(context):
-    ui = None
-    try:
-        app = adsk.core.Application.get()
-        ui = app.userInterface
-        grip_structure.run(context)
-    except:
-        if ui:
-            ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
+    importlib.reload(grip_structure)
+    grip_structure.run(context)

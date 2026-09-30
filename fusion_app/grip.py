@@ -54,10 +54,19 @@ GRIP_FINGER_D_PLANE_J_PRIME_NAME = "グリップ参照平面：DJ'"
 GRIP_REFERENCE_PLANE_DISPLAY_SIZE_MM = 24.0
 GRIP_FINGER_A_LINE_SKETCH_NAME = 'グリップ関節線：指A'
 GRIP_FINGER_A_LENGTHS_MM = (12.0, 25.0, 17.0, 11.0, 14.0)
+GRIP_FINGER_A_TWIST_DEG = 20.0
 GRIP_FINGER_A_ANGLES_DEG = (80.0, 126.0, 160.0, 135.0, 150.0)
 GRIP_FINGER_B_LINE_SKETCH_NAME = 'グリップ関節線：指B'
 GRIP_FINGER_B_LENGTHS_MM = (11.0, 24.0, 21.0, 18.0, 13.0)
 GRIP_FINGER_B_ANGLES_DEG = (82.0, 123.0, 162.0, 150.0, 133.0)
+GRIP_FINGER_C_LINE_SKETCH_NAME = 'グリップ関節線：指C'
+GRIP_FINGER_C_LENGTHS_MM = (30.0, 10.0, 15.0, 18.0, 16.0)
+GRIP_FINGER_C_TWIST_DEG = 10.0
+GRIP_FINGER_C_ANGLES_DEG = (80.0, 130.0, 130.0, 150.0, 140.0)
+GRIP_FINGER_D_LINE_SKETCH_NAME = 'グリップ関節線：指D'
+GRIP_FINGER_D_LENGTHS_MM = (37.0, 14.0, 10.0, 10.0, 15.0)
+GRIP_FINGER_D_TWIST_DEG = 30.0
+GRIP_FINGER_D_ANGLES_DEG = (40.0, 150.0, 160.0, 140.0, 150.0)
 
 
 def mm_to_cm(value_mm):
@@ -471,7 +480,7 @@ def build_reference_geometry(root_comp):
     }
 
 
-def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg):
+def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg, prefer_far_from_o=True):
     """Keep lengths; scale joint turns uniformly to meet P on J prime."""
     lengths = tuple(lengths_mm)
     angles = tuple(angles_deg)
@@ -519,7 +528,8 @@ def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg):
         points = [tuple(g[j] + x*axis[j] + side*y*normal[j] for j in range(3))
                   for x, y in flat]
         candidates.append(points)
-    points = max(candidates, key=lambda pts: sum(
+    select_candidate = max if prefer_far_from_o else min
+    points = select_candidate(candidates, key=lambda pts: sum(
         (pts[1][j] - GRIP_REFERENCE_POINT_O_MM[j])**2 for j in range(3)))
     points[0], points[-1] = g, p
     actual_angles = (math.degrees(math.asin(abs(math.sin(rotation)))),) + tuple(
@@ -529,11 +539,26 @@ def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg):
             'turn_scale': factor}
 
 
-def calculate_finger_a_line(lengths_mm=None, angles_deg=None):
-    return calculate_finger_line(
+def calculate_finger_a_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FINGER_A_TWIST_DEG):
+    data = calculate_finger_line(
         GRIP_FINGER_A_POINT_P_MM, GRIP_FINGER_A_POINT_P_PRIME_MM,
         GRIP_FINGER_A_LENGTHS_MM if lengths_mm is None else lengths_mm,
         GRIP_FINGER_A_ANGLES_DEG if angles_deg is None else angles_deg)
+
+    return apply_finger_twist(data, twist_deg, GRIP_FINGER_A_POINT_P_MM,
+                              GRIP_FINGER_A_POINT_P_PRIME_MM)
+
+
+def apply_finger_twist(data, twist_deg, point_p, point_p_prime):
+    from . import grip_twist
+    import importlib
+    importlib.reload(grip_twist)
+    g = GRIP_REFERENCE_POINT_G_MM
+    b_axis = subtract_points(GRIP_FINGER_B_POINT_P_MM, g)
+    b_j_normal = cross_vectors(b_axis, subtract_points(GRIP_FINGER_B_POINT_P_PRIME_MM, g))
+    b_joint_normal = cross_vectors(b_axis, b_j_normal)
+    reference_normal = cross_vectors(subtract_points(point_p, g), subtract_points(point_p_prime, g))
+    return grip_twist.solve(data, twist_deg, b_joint_normal, reference_normal)
 
 
 def calculate_finger_b_line(lengths_mm=None, angles_deg=None):
@@ -543,14 +568,55 @@ def calculate_finger_b_line(lengths_mm=None, angles_deg=None):
         GRIP_FINGER_B_ANGLES_DEG if angles_deg is None else angles_deg)
 
 
+def calculate_finger_c_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FINGER_C_TWIST_DEG):
+    data = calculate_finger_line(
+        GRIP_FINGER_C_POINT_P_MM, GRIP_FINGER_C_POINT_P_PRIME_MM,
+        GRIP_FINGER_C_LENGTHS_MM if lengths_mm is None else lengths_mm,
+        GRIP_FINGER_C_ANGLES_DEG if angles_deg is None else angles_deg)
+
+    return apply_finger_twist(data, twist_deg, GRIP_FINGER_C_POINT_P_MM,
+                              GRIP_FINGER_C_POINT_P_PRIME_MM)
+
+
+def calculate_finger_d_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FINGER_D_TWIST_DEG):
+    data = calculate_finger_line(
+        GRIP_FINGER_D_POINT_P_MM, GRIP_FINGER_D_POINT_P_PRIME_MM,
+        GRIP_FINGER_D_LENGTHS_MM if lengths_mm is None else lengths_mm,
+        GRIP_FINGER_D_ANGLES_DEG if angles_deg is None else angles_deg,
+        prefer_far_from_o=False)
+
+    return apply_finger_twist(data, twist_deg, GRIP_FINGER_D_POINT_P_MM,
+                              GRIP_FINGER_D_POINT_P_PRIME_MM)
+
+
+
+def calculate_guideline_points(finger, data):
+    """Replace A/B G1 with the opposite parallelogram vertex.
+
+    Keep source points unchanged for the established width surfaces and twist.
+    """
+    coordinates = list(data['points_mm'])
+    names = ['G'] + [finger + 'G' + str(i) for i in range(1, 5)] + [finger + 'P']
+    if finger in ('A', 'B'):
+        g, g1, g2 = coordinates[:3]
+        coordinates[1] = tuple(g[j] + g2[j] - g1[j] for j in range(3))
+        names[1] = finger + "G1'"
+    return coordinates, names
+
+
 def create_finger_line(root_comp, plane, finger, sketch_name, data):
     sketch = root_comp.sketches.add(plane)
     sketch.name = sketch_name
     helpers.add_named_attribute(sketch, sketch.name)
-    point_names = ('G',) + tuple(finger + 'G' + str(i) for i in range(1, 5)) + (finger + 'P',)
+    guideline_points, point_names = calculate_guideline_points(finger, data)
     points = []
-    for name, coordinates in zip(point_names, data['points_mm']):
+    for name, coordinates in zip(point_names, guideline_points):
         point = sketch.sketchPoints.add(sketch.modelToSketchSpace(create_point_mm(*coordinates)))
+        if data.get('twist_deg', 0) or finger in ('A', 'B'):
+            actual = point.worldGeometry
+            if max(abs(v * 10.0 - target) for v, target in zip(
+                    (actual.x, actual.y, actual.z), coordinates)) > 1e-5:
+                raise RuntimeError('指{}の3D関節点を指定座標に作成できませんでした。'.format(finger))
         helpers.add_named_attribute(point, 'グリップ関節点：' + name)
         points.append(point)
     for index in range(5):
@@ -561,12 +627,13 @@ def create_finger_line(root_comp, plane, finger, sketch_name, data):
     reference.isConstruction = True
     helpers.add_named_attribute(reference, 'グリップ参考線：' + finger + 'GP')
     sketch.isVisible = True
-    return data
+    return dict(data, guideline_points_mm=guideline_points, guideline_point_names=point_names)
 
 
 def create_finger_a_line(root_comp, plane, params):
     data = calculate_finger_a_line(params.get('finger_a_lengths_mm'),
-                                   params.get('finger_a_angles_deg'))
+                                   params.get('finger_a_angles_deg'),
+                                   params.get('finger_a_twist_deg', GRIP_FINGER_A_TWIST_DEG))
     return create_finger_line(root_comp, plane, 'A', GRIP_FINGER_A_LINE_SKETCH_NAME, data)
 
 
@@ -576,12 +643,28 @@ def create_finger_b_line(root_comp, plane, params):
     return create_finger_line(root_comp, plane, 'B', GRIP_FINGER_B_LINE_SKETCH_NAME, data)
 
 
+def create_finger_c_line(root_comp, plane, params):
+    data = calculate_finger_c_line(params.get('finger_c_lengths_mm'),
+                                   params.get('finger_c_angles_deg'),
+                                   params.get('finger_c_twist_deg', GRIP_FINGER_C_TWIST_DEG))
+    return create_finger_line(root_comp, plane, 'C', GRIP_FINGER_C_LINE_SKETCH_NAME, data)
+
+
+def create_finger_d_line(root_comp, plane, params):
+    data = calculate_finger_d_line(params.get('finger_d_lengths_mm'),
+                                   params.get('finger_d_angles_deg'),
+                                   params.get('finger_d_twist_deg', GRIP_FINGER_D_TWIST_DEG))
+    return create_finger_line(root_comp, plane, 'D', GRIP_FINGER_D_LINE_SKETCH_NAME, data)
+
+
 def build_grip(root_comp, outer_shell_body, params=None):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if params is None:
         params = dict(naming.DEFAULT_GRIP_PARAMS)
 
+    delete_sketch_if_present(root_comp, GRIP_FINGER_D_LINE_SKETCH_NAME)
+    delete_sketch_if_present(root_comp, GRIP_FINGER_C_LINE_SKETCH_NAME)
     delete_sketch_if_present(root_comp, GRIP_FINGER_B_LINE_SKETCH_NAME)
     delete_sketch_if_present(root_comp, GRIP_FINGER_A_LINE_SKETCH_NAME)
     delete_sketch_if_present(root_comp, GRIP_REFERENCE_LINE_SKETCH_NAME)
@@ -617,8 +700,19 @@ def build_grip(root_comp, outer_shell_body, params=None):
     delete_plane_if_present(root_comp, GRIP_FINGER_D_PLANE_J_PRIME_NAME)
 
     references = build_reference_geometry(root_comp)
-    create_finger_a_line(root_comp, references['finger_a_plane_j_prime'], params)
-    create_finger_b_line(root_comp, references['finger_b_plane_j_prime'], params)
+    finger_data = {
+        'A': create_finger_a_line(root_comp, references['finger_a_plane_j_prime'], params),
+        'B': create_finger_b_line(root_comp, references['finger_b_plane_j_prime'], params),
+        'C': create_finger_c_line(root_comp, references['finger_c_plane_j_prime'], params),
+        'D': create_finger_d_line(root_comp, references['finger_d_plane_j_prime'], params),
+    }
+    from . import grip_width
+    import importlib
+    importlib.reload(grip_width)
+    a_side_direction = subtract_points(GRIP_FINGER_A_POINT_P_MM, GRIP_FINGER_D_POINT_P_MM)
+    for finger, data in finger_data.items():
+        grip_width.create(root_comp, finger, data, a_side_direction, 10.0)
+    grip_width.create_connections(root_comp, finger_data, a_side_direction)
 
     _ = outer_shell_body
     return None

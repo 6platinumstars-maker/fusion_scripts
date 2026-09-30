@@ -1,6 +1,9 @@
 import adsk.core
 import adsk.fusion
 import math
+import json
+import os
+from datetime import datetime, timezone
 import traceback
 
 try:
@@ -1097,6 +1100,70 @@ def apply_constant_radius_fillet_to_edges(root_comp, edges, radius_cm, tangent_c
     return fillets.add(fillet_input)
 
 
+def write_retainer_diagnostics(report):
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'retainer_diagnostics.json')
+    try:
+        with open(path, 'w', encoding='utf-8') as stream:
+            json.dump(report, stream, ensure_ascii=False, indent=2)
+        return path
+    except Exception as error:
+        return '診断ファイル保存失敗: {}'.format(error)
+
+
+def collect_retainer_diagnostics(root_comp, sketch, profiles, edges):
+    # Read-only inspection: never change geometry or filter the fillet input.
+    def read(getter):
+        try:
+            return getter()
+        except Exception as error:
+            return {'read_error': str(error)}
+
+    def xyz(point):
+        return [point.x * 10.0, point.y * 10.0, point.z * 10.0]
+
+    def face_data(face):
+        return {'temp_id': read(lambda: face.tempId),
+                'surface_type': read(lambda: face.geometry.objectType),
+                'area_mm2': read(lambda: face.area * 100.0)}
+
+    def edge_data(edge):
+        return {'temp_id': read(lambda: edge.tempId),
+                'body_name': read(lambda: edge.body.name),
+                'start_mm': read(lambda: xyz(edge.startVertex.geometry)),
+                'end_mm': read(lambda: xyz(edge.endVertex.geometry)),
+                'curve_type': read(lambda: edge.geometry.objectType),
+                'length_mm': read(lambda: edge.length * 10.0),
+                'face_count': read(lambda: edge.faces.count),
+                'coedge_count': read(lambda: edge.coEdges.count),
+                'faces': read(lambda: [face_data(face) for face in edge.faces])}
+
+    def profile_data(profile):
+        return {'token': read(lambda: profile.entityToken),
+                'area_mm2': read(lambda: profile.areaProperties().area * 100.0),
+                'centroid_model_mm': read(lambda: xyz(sketch.sketchToModelSpace(
+                    profile.areaProperties().centroid))),
+                'loop_count': read(lambda: profile.profileLoops.count)}
+
+    report = {'timestamp_utc': datetime.now(timezone.utc).isoformat(),
+              'fusion_version': read(lambda: adsk.core.Application.get().version),
+              'stage': 'before_retainer_R1_fillet', 'radius_mm': 1.0,
+              'tangent_chain': False, 'sketch_name': sketch.name,
+              'selected_profiles': [profile_data(profile) for profile in profiles],
+              'all_sketch_profiles': read(lambda: [profile_data(sketch.profiles.item(i))
+                                                  for i in range(sketch.profiles.count)]),
+              'fillet_edges': [edge_data(edge) for edge in edges],
+              'bodies': []}
+    for body in root_comp.bRepBodies:
+        report['bodies'].append({
+            'name': read(lambda: body.name), 'is_solid': read(lambda: body.isSolid),
+            'volume_mm3': read(lambda: body.volume * 1000.0),
+            'edge_count': read(lambda: body.edges.count),
+            'non_two_face_edges': read(lambda: [edge_data(edge) for edge in body.edges
+                                                if edge.faces.count != 2])})
+    return report
+
+
 def find_circular_edge_by_center_radius_z(body, center_x, center_y, radius_cm, z_value, tolerance=1e-6):
     for edge in body.edges:
         geometry = edge.geometry
@@ -1428,21 +1495,6 @@ def _build_inner_shell_with_legacy_api(root_comp, fusion_helpers, app_helpers):
         fusion_helpers
     )
     retainer_outer_fan_profiles = get_retainer_outer_fan_profiles(retainer_outer_fan_sketch)
-    retainer_feature = extrude_profiles(
-        root_comp,
-        retainer_outer_fan_profiles,
-        mm_to_cm(2.0),
-        adsk.fusion.ExtentDirections.NegativeExtentDirection,
-        adsk.fusion.FeatureOperations.JoinFeatureOperation
-    )
-    add_named_attribute(retainer_feature, '留金部')
-    retainer_side_edges = get_unique_edges_from_faces(retainer_feature.sideFaces)
-    apply_constant_radius_fillet_to_edges(
-        root_comp,
-        find_vertical_linear_edges(retainer_side_edges),
-        mm_to_cm(1.0),
-        tangent_chain=False
-    )
 
     body = root_comp.bRepBodies.item(0)
     outer_bottom_semicircle_center = create_point_mm(0.0, 5.0, -3.0)
@@ -1488,6 +1540,68 @@ def _build_inner_shell_with_legacy_api(root_comp, fusion_helpers, app_helpers):
         mm_to_cm(1.0),
         tangent_chain=False
     )
+
+    # The two sectors share their centre line. Fillet separate solid bodies
+    # before joining them, so that no edge has four adjacent faces.
+    retainer_bodies = []
+    diagnostic_report = {'strategy': 'separate_sectors_then_join', 'sectors': []}
+    diagnostic_path = write_retainer_diagnostics(diagnostic_report)
+    try:
+        for sector_index, profile in enumerate(retainer_outer_fan_profiles, start=1):
+            diagnostic_report['stage'] = 'retainer_sector_{}_extrude'.format(sector_index)
+            retainer_feature = extrude_profile(
+                root_comp, profile, mm_to_cm(2.0),
+                adsk.fusion.ExtentDirections.NegativeExtentDirection,
+                adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+            )
+            add_named_attribute(retainer_feature, '留金部{}'.format(sector_index))
+            retainer_body = fusion_helpers.get_body_from_feature(retainer_feature)
+            retainer_side_edges = get_unique_edges_from_faces(retainer_feature.sideFaces)
+            retainer_fillet_edges = find_vertical_linear_edges(retainer_side_edges)
+            try:
+                sector_report = collect_retainer_diagnostics(
+                    root_comp, retainer_outer_fan_sketch, [profile], retainer_fillet_edges,
+                )
+            except Exception:
+                sector_report = {'diagnostic_error': traceback.format_exc()}
+            diagnostic_report['sectors'].append(sector_report)
+            diagnostic_report['stage'] = 'retainer_sector_{}_R1_fillet'.format(sector_index)
+            write_retainer_diagnostics(diagnostic_report)
+            if any(edge.faces.count != 2 for edge in retainer_body.edges):
+                raise RuntimeError('留金部{}に面の接続が不正な辺があります。'.format(sector_index))
+            apply_constant_radius_fillet_to_edges(
+                root_comp, retainer_fillet_edges, mm_to_cm(1.0), tangent_chain=False,
+            )
+            retainer_bodies.append(retainer_body)
+        diagnostic_report['stage'] = 'retainer_R1_fillet_succeeded'
+        write_retainer_diagnostics(diagnostic_report)
+    except Exception as error:
+        diagnostic_report['error'] = str(error)
+        diagnostic_path = write_retainer_diagnostics(diagnostic_report)
+        raise RuntimeError('{}\n診断記録: {}'.format(error, diagnostic_path)) from error
+
+
+    # Join only the rounded retainers, after the supporting semicircle exists.
+    # Never include unrelated root-component bodies as tools in this operation.
+    try:
+        diagnostic_report['stage'] = 'retainer_join'
+        write_retainer_diagnostics(diagnostic_report)
+        for retainer_body in retainer_bodies:
+            tool_bodies = adsk.core.ObjectCollection.create()
+            tool_bodies.add(retainer_body)
+            combine_input = root_comp.features.combineFeatures.createInput(body, tool_bodies)
+            combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+            combine_input.isKeepToolBodies = False
+            combined = root_comp.features.combineFeatures.add(combine_input)
+            body = fusion_helpers.get_body_from_feature(combined)
+        if not body.isSolid or any(edge.faces.count != 2 for edge in body.edges):
+            raise RuntimeError('留金部結合後の内殻が正常なソリッドではありません。')
+        diagnostic_report['stage'] = 'retainer_join_succeeded'
+        write_retainer_diagnostics(diagnostic_report)
+    except Exception as error:
+        diagnostic_report['error'] = str(error)
+        diagnostic_path = write_retainer_diagnostics(diagnostic_report)
+        raise RuntimeError('{}\n診断記録: {}'.format(error, diagnostic_path)) from error
 
     joystick_receiver_sketch = create_joystick_receiver_sketch(root_comp)
     joystick_receiver_profile = fusion_helpers.get_largest_profile(joystick_receiver_sketch)
