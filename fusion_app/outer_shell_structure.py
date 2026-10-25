@@ -252,6 +252,9 @@ def build_for_preview(context=None, outer_shell_params=None):
     outer_results = outer_shell_yz_face_extrude.extrude(root_comp, outer_results)
     outer_results = outer_shell_circle_cut.cut(root_comp, outer_results)
     outer_results = outer_shell_corner_split.split_and_remove(root_comp, outer_results)
+    from . import grip_fixed_reference
+    importlib.reload(grip_fixed_reference)
+    grip_fixed_reference.publish(outer_results, manifest['revision'])
     isolated_design.record(design, 'outer', manifest['revision'])
     return outer_results
 

@@ -1,0 +1,15 @@
+#!/bin/bash
+# 4専用。既存の1・2・3と参照キャッシュには書き込まない。
+set -euo pipefail
+BASE_SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DST="/mnt/c/Users/6plat/AppData/Roaming/Autodesk/Autodesk Fusion 360/API/Scripts/4"
+mkdir -p "$BASE_DST"
+if [ -f "$BASE_DST/4.py" ] && ! cmp -s "$BASE_SRC/4.py" "$BASE_DST/4.py"; then
+    BACKUP_DIR="$BASE_SRC/backups/script4/$(date +%Y%m%d_%H%M%S)_$$"
+    mkdir -p "$BACKUP_DIR"
+    cp "$BASE_DST/4.py" "$BACKUP_DIR/4.py"
+    echo "Backup: $BACKUP_DIR/4.py"
+fi
+cp "$BASE_SRC/4.py" "$BASE_DST/4.py"
+cmp -s "$BASE_SRC/4.py" "$BASE_DST/4.py"
+echo "Synced: 4 (Fusionで4を実行してください)"

@@ -22,6 +22,9 @@ def build_for_preview(context=None):
     for candidate in root.bRepBodies:
         candidate.isLightBulbOn = (candidate == body)
     isolated_design.hide_construction(root)
+    from . import grip_inner_reference
+    importlib.reload(grip_inner_reference)
+    grip_inner_reference.publish(body)
     reference_snapshot.publish(pending)
     isolated_design.record(design, 'inner', pending['revision'])
     return {naming.BODY_INNER_SHELL: body}

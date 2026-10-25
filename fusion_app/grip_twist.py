@@ -23,11 +23,13 @@ def solve(data, twist_deg, b_plane_normal, reference_normal, joint_index=2):
     Pose minimizes summed squared joint displacement about fixed GP.
     Choose twist handedness by the next joint's distance to BJ prime after closure.
     """
-    if joint_index not in (2, 3):
-        raise ValueError('ねじり関節はG2またはG3を指定してください。')
+    if joint_index not in (1, 2, 3):
+        raise ValueError('ねじり関節はG1、G2またはG3を指定してください。')
     k = joint_index
     if not math.isfinite(twist_deg) or not 0 <= twist_deg < 180:
         raise ValueError('ねじり角は0以上180度未満で指定してください。')
+    if k == 1:
+        return solve_g1(data, twist_deg, b_plane_normal, reference_normal)
     if twist_deg == 0: return dict(data, twist_deg=0., twist_joint_index=k)
     old = data['points_mm']; g, p = old[0], old[-1]
     q = [sub(x, g) for x in old]
@@ -86,4 +88,48 @@ def solve(data, twist_deg, b_plane_normal, reference_normal, joint_index=2):
                 signed_twist_deg=sign*twist_deg, twist_joint_index=k,
                 direction_point_index=k+1, baseline_angles_deg=data['angles_deg'],
                 direction_point_b_plane_distance_before_mm=abs(dot(q[k+1], bn)),
+                direction_point_b_plane_distance_after_mm=distance)
+
+
+def solve_g1(data, twist_deg, b_plane_normal, reference_normal):
+    """Keep bends; twist about GG1, then minimally align the endpoint with GP.
+
+    No extra GP roll: that would cancel a G1 twist. Transport the original
+    front-plane normal through the same root rotation to define the L0 width.
+    """
+    old=data['points_mm'];g,p=old[0],old[-1]
+    q=[sub(x,g) for x in old];u=unit(q[1]);gp=unit(q[-1])
+    front=unit(cross(q[1],sub(q[2],q[1])))
+    bn=unit(b_plane_normal)
+    before=abs(dot(q[2],bn))
+    candidates=[]
+    for sign in (-1,1):
+        theta=math.radians(sign*twist_deg)
+        pts=q[:2]+[add(q[1],rotate(sub(x,q[1]),u,theta)) for x in q[2:]]
+        end=unit(pts[-1]);axis=cross(end,gp);n=front
+        if norm(axis)>1e-12:
+            turn=math.atan2(norm(axis),dot(end,gp));axis=unit(axis)
+            pts=[rotate(x,axis,turn) for x in pts]
+            n=rotate(front,axis,turn)
+        elif dot(end,gp)<0:
+            axis=unit(cross(end,front))
+            pts=[rotate(x,axis,math.pi) for x in pts];n=rotate(front,axis,math.pi)
+        distance=abs(dot(pts[2],bn))
+        movement=sum(norm(sub(a,b))**2 for a,b in zip(pts,q))
+        if twist_deg==0 or distance<before-1e-8:
+            candidates.append((movement,distance,sign,pts,n))
+    if not candidates:
+        raise ValueError('G1ねじりでP固定かつBの関節面へ近づく解がありません。')
+    _,distance,sign,pts,front_normal=min(candidates,key=lambda c:(c[0],c[1]))
+    result=[add(g,x) for x in pts]
+    if norm(sub(result[-1],p))>1e-7:raise ValueError('G1ねじりの到達点誤差が大きすぎます。')
+    result[0],result[-1]=g,p
+    angles=[math.degrees(math.asin(min(1.,abs(dot(unit(sub(result[1],g)),unit(reference_normal))))))]
+    angles += [angle(sub(result[i-1],result[i]),sub(result[i+1],result[i])) for i in range(1,5)]
+    if twist_deg==0:result=list(old);angles=data['angles_deg']
+    return dict(data,points_mm=result,angles_deg=tuple(angles),twist_deg=twist_deg,
+                signed_twist_deg=sign*twist_deg,twist_joint_index=1,
+                front_plane_normal=front_normal,direction_point_index=2,
+                baseline_angles_deg=data['angles_deg'],
+                direction_point_b_plane_distance_before_mm=before,
                 direction_point_b_plane_distance_after_mm=distance)

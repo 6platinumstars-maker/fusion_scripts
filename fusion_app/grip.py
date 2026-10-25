@@ -53,18 +53,19 @@ GRIP_FINGER_D_PLANE_J_NAME = 'グリップ参照平面：DJ'
 GRIP_FINGER_D_PLANE_J_PRIME_NAME = "グリップ参照平面：DJ'"
 GRIP_REFERENCE_PLANE_DISPLAY_SIZE_MM = 24.0
 GRIP_FINGER_A_LINE_SKETCH_NAME = 'グリップ関節線：指A'
-GRIP_FINGER_A_LENGTHS_MM = (12.0, 25.0, 17.0, 11.0, 14.0)
+GRIP_FINGER_A_LENGTHS_MM = (15.0, 20.0, 17.0, 11.0, 14.0)
 GRIP_FINGER_A_TWIST_DEG = 20.0
 GRIP_FINGER_A_ANGLES_DEG = (80.0, 126.0, 160.0, 135.0, 150.0)
 GRIP_FINGER_B_LINE_SKETCH_NAME = 'グリップ関節線：指B'
-GRIP_FINGER_B_LENGTHS_MM = (11.0, 24.0, 21.0, 18.0, 13.0)
+GRIP_FINGER_B_LENGTHS_MM = (20.0, 15.0, 21.0, 18.0, 13.0)
 GRIP_FINGER_B_ANGLES_DEG = (82.0, 123.0, 162.0, 150.0, 133.0)
 GRIP_FINGER_C_LINE_SKETCH_NAME = 'グリップ関節線：指C'
-GRIP_FINGER_C_LENGTHS_MM = (30.0, 10.0, 15.0, 18.0, 16.0)
+GRIP_FINGER_C_LENGTHS_MM = (15.0, 30.0, 15.0, 18.0, 16.0)
+GRIP_FINGER_C_MAX_TOTAL_TURN_DEG = 210.0
 GRIP_FINGER_C_TWIST_DEG = 10.0
 GRIP_FINGER_C_ANGLES_DEG = (80.0, 130.0, 130.0, 150.0, 140.0)
 GRIP_FINGER_D_LINE_SKETCH_NAME = 'グリップ関節線：指D'
-GRIP_FINGER_D_LENGTHS_MM = (37.0, 14.0, 10.0, 10.0, 15.0)
+GRIP_FINGER_D_LENGTHS_MM = (30.0, 23.0, 15.0, 15.0, 15.0)
 GRIP_FINGER_D_TWIST_DEG = 30.0
 GRIP_FINGER_D_ANGLES_DEG = (40.0, 150.0, 160.0, 140.0, 150.0)
 
@@ -480,7 +481,7 @@ def build_reference_geometry(root_comp):
     }
 
 
-def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg, prefer_far_from_o=True):
+def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg, prefer_far_from_o=True, max_total_turn_deg=180.0):
     """Keep lengths; scale joint turns uniformly to meet P on J prime."""
     lengths = tuple(lengths_mm)
     angles = tuple(angles_deg)
@@ -490,6 +491,8 @@ def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg, 
             or not 0 <= angles[0] <= 90
             or any(not 0 < v < 180 for v in angles[1:])):
         raise ValueError('指の長さ5個と角度5個を確認してください。')
+    if not math.isfinite(max_total_turn_deg) or not 180.0 <= max_total_turn_deg <= 210.0:
+        raise ValueError('合計曲げ量の上限は180〜210度で指定してください。')
     g, p = GRIP_REFERENCE_POINT_G_MM, point_p_mm
     axis = normalize_vector(subtract_points(p, g))
     normal = normalize_vector(cross_vectors(
@@ -510,8 +513,24 @@ def calculate_finger_line(point_p_mm, point_p_prime_mm, lengths_mm, angles_deg, 
 
     # Within a total turn of pi the endpoint distance decreases monotonically.
     low, high = 0.0, math.pi / sum(turns)
-    if not math.hypot(*chain(high)[-1]) <= distance < sum(lengths):
-        raise ValueError('指定長さでは半円状の調整範囲内でPへ接続できません。')
+    if distance >= sum(lengths):
+        raise ValueError('指定長さの合計ではPへ接続できません。')
+    if math.hypot(*chain(high)[-1]) > distance:
+        # Beyond pi monotonicity is not assumed. Bracket the first crossing
+        # in small angular steps, keeping the original <=180-degree solution.
+        found = False
+        total = 180.0
+        while total < max_total_turn_deg:
+            low = high
+            total = min(total + 0.5, max_total_turn_deg)
+            high = math.radians(total) / sum(turns)
+            if any(high * turn >= math.pi for turn in turns):
+                break
+            if math.hypot(*chain(high)[-1]) <= distance:
+                found = True
+                break
+        if not found:
+            raise ValueError('指定長さでは合計曲げ量の上限{:g}度以内でPへ接続できません。'.format(max_total_turn_deg))
     for _ in range(80):
         middle = (low + high) / 2.0
         if math.hypot(*chain(middle)[-1]) > distance:
@@ -549,7 +568,7 @@ def calculate_finger_a_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FIN
                               GRIP_FINGER_A_POINT_P_PRIME_MM)
 
 
-def apply_finger_twist(data, twist_deg, point_p, point_p_prime):
+def apply_finger_twist(data, twist_deg, point_p, point_p_prime, joint_index=2):
     from . import grip_twist
     import importlib
     importlib.reload(grip_twist)
@@ -558,7 +577,7 @@ def apply_finger_twist(data, twist_deg, point_p, point_p_prime):
     b_j_normal = cross_vectors(b_axis, subtract_points(GRIP_FINGER_B_POINT_P_PRIME_MM, g))
     b_joint_normal = cross_vectors(b_axis, b_j_normal)
     reference_normal = cross_vectors(subtract_points(point_p, g), subtract_points(point_p_prime, g))
-    return grip_twist.solve(data, twist_deg, b_joint_normal, reference_normal)
+    return grip_twist.solve(data, twist_deg, b_joint_normal, reference_normal, joint_index=joint_index)
 
 
 def calculate_finger_b_line(lengths_mm=None, angles_deg=None):
@@ -572,10 +591,11 @@ def calculate_finger_c_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FIN
     data = calculate_finger_line(
         GRIP_FINGER_C_POINT_P_MM, GRIP_FINGER_C_POINT_P_PRIME_MM,
         GRIP_FINGER_C_LENGTHS_MM if lengths_mm is None else lengths_mm,
-        GRIP_FINGER_C_ANGLES_DEG if angles_deg is None else angles_deg)
+        GRIP_FINGER_C_ANGLES_DEG if angles_deg is None else angles_deg,
+        max_total_turn_deg=GRIP_FINGER_C_MAX_TOTAL_TURN_DEG)
 
     return apply_finger_twist(data, twist_deg, GRIP_FINGER_C_POINT_P_MM,
-                              GRIP_FINGER_C_POINT_P_PRIME_MM)
+                              GRIP_FINGER_C_POINT_P_PRIME_MM, joint_index=2)
 
 
 def calculate_finger_d_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FINGER_D_TWIST_DEG):
@@ -586,7 +606,7 @@ def calculate_finger_d_line(lengths_mm=None, angles_deg=None, twist_deg=GRIP_FIN
         prefer_far_from_o=False)
 
     return apply_finger_twist(data, twist_deg, GRIP_FINGER_D_POINT_P_MM,
-                              GRIP_FINGER_D_POINT_P_PRIME_MM)
+                              GRIP_FINGER_D_POINT_P_PRIME_MM, joint_index=2)
 
 
 
@@ -657,7 +677,7 @@ def create_finger_d_line(root_comp, plane, params):
     return create_finger_line(root_comp, plane, 'D', GRIP_FINGER_D_LINE_SKETCH_NAME, data)
 
 
-def build_grip(root_comp, outer_shell_body, params=None):
+def build_grip(root_comp, outer_shell_body, params=None, smv1_fixed_points=None, smv2_edge=None, smv3_fixed_points=None, smv4_edge=None, smv5_fixed_points=None, smv6_edge=None, smv7_fixed_points=None, smv8_fixed_point=None, d_tip_fixed_points=None):
     if root_comp is None:
         raise RuntimeError('root_comp is required.')
     if params is None:
@@ -710,9 +730,92 @@ def build_grip(root_comp, outer_shell_body, params=None):
     import importlib
     importlib.reload(grip_width)
     a_side_direction = subtract_points(GRIP_FINGER_A_POINT_P_MM, GRIP_FINGER_D_POINT_P_MM)
+    from . import grip_reference_fx6
+    importlib.reload(grip_reference_fx6)
+    grip_reference_fx6.create(root_comp, finger_data, a_side_direction)
     for finger, data in finger_data.items():
         grip_width.create(root_comp, finger, data, a_side_direction, 10.0)
     grip_width.create_connections(root_comp, finger_data, a_side_direction)
+
+    if smv1_fixed_points is not None:
+        from . import grip_semi_variable
+        importlib.reload(grip_semi_variable)
+        grip_semi_variable.create_smv1(root_comp, finger_data['A'], smv1_fixed_points, a_side_direction)
+
+    if smv2_edge is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv2(root_comp, finger_data['A'], a_side_direction, smv2_edge)
+
+    if smv3_fixed_points is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv3(root_comp, finger_data['A'], smv3_fixed_points, a_side_direction)
+
+    if smv4_edge is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv4(root_comp, finger_data['A'], a_side_direction, smv4_edge)
+
+    if smv5_fixed_points is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv5(root_comp, finger_data, smv5_fixed_points, a_side_direction)
+
+    if smv6_edge is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv6(root_comp, finger_data['B'], a_side_direction, smv6_edge)
+
+    if smv7_fixed_points is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv7(root_comp, finger_data['B'], smv7_fixed_points, a_side_direction)
+
+    if smv8_fixed_point is not None:
+        from . import grip_semi_variable
+        grip_semi_variable.create_smv8(root_comp, finger_data['C'], smv8_fixed_point, a_side_direction)
+        grip_semi_variable.create_smv9(root_comp, finger_data, smv8_fixed_point, a_side_direction)
+        grip_semi_variable.create_smv10(root_comp, finger_data['C'], smv8_fixed_point, a_side_direction)
+
+    from . import grip_reference_ellipse
+    importlib.reload(grip_reference_ellipse)
+    grip_reference_ellipse.create(root_comp, finger_data['A'], a_side_direction)
+    grip_reference_ellipse.create_ref6(root_comp, finger_data['C'], finger_data['D'])
+    grip_reference_ellipse.create_ref7(root_comp, finger_data['A'], a_side_direction)
+    from . import grip_reference_bezier
+    importlib.reload(grip_reference_bezier)
+    ref12_sketch = grip_reference_bezier.create(root_comp, finger_data['A'])
+    from . import grip_con15
+    importlib.reload(grip_con15)
+    grip_con15.create(root_comp, finger_data['A'], finger_data['C'], a_side_direction, ref12_sketch)
+    from . import grip_reference_closest
+    importlib.reload(grip_reference_closest)
+    ref13_point = grip_reference_closest.create(root_comp, finger_data['A'], finger_data['C'], a_side_direction)
+    from . import grip_con19_20
+    importlib.reload(grip_con19_20)
+    grip_con19_20.create(root_comp, finger_data, a_side_direction, ref13_point)
+    hexagon_curve_sketches = grip_reference_ellipse.create_hexagon_curves(root_comp, finger_data['C'], finger_data['D'])
+    from . import grip_con14
+    importlib.reload(grip_con14)
+    grip_con14.create(root_comp, finger_data['C'], finger_data['D'], a_side_direction)
+    from . import grip_con22_23
+    importlib.reload(grip_con22_23)
+    grip_con22_23.create(root_comp, finger_data['C'], finger_data['D'], a_side_direction)
+    from . import grip_con16_18
+    importlib.reload(grip_con16_18)
+    grip_con16_18.create_moving(root_comp, finger_data, a_side_direction, ref13_point)
+
+    from . import grip_semi_variable
+    importlib.reload(grip_semi_variable)
+    from . import grip_hexagon_curved_surfaces
+    importlib.reload(grip_hexagon_curved_surfaces)
+    grip_hexagon_curved_surfaces.create(root_comp, finger_data['D'], hexagon_curve_sketches)
+    from . import grip_smv17
+    importlib.reload(grip_smv17)
+    grip_smv17.create(root_comp, finger_data['D'], a_side_direction)
+
+    from . import grip_hexagon_fixed_surfaces
+    importlib.reload(grip_hexagon_fixed_surfaces)
+    grip_hexagon_fixed_surfaces.create(root_comp, finger_data['D'], a_side_direction)
+    if d_tip_fixed_points is not None:
+        from . import grip_d_tip_surfaces
+        importlib.reload(grip_d_tip_surfaces)
+        grip_d_tip_surfaces.create(root_comp, finger_data['D'], a_side_direction, d_tip_fixed_points)
 
     _ = outer_shell_body
     return None

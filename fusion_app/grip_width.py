@@ -3,12 +3,17 @@ import math
 from . import grip_twist as v
 
 
-def rectangles(points, a_side_direction, width=10.0, joint_index=2):
+def rectangles(points, a_side_direction, width=10.0, joint_index=2, front_normal=None):
     if not math.isfinite(width) or width <= 0:
         raise ValueError('指幅は正の有限値を指定してください。')
-    if joint_index not in (2, 3):
-        raise ValueError('幅面の切替関節はG2またはG3を指定してください。')
-    front = v.unit(v.cross(v.sub(points[1],points[0]), v.sub(points[2],points[1])))
+    if joint_index not in (1, 2, 3):
+        raise ValueError('幅面の切替関節はG1、G2またはG3を指定してください。')
+    if joint_index == 1:
+        if front_normal is None:
+            raise ValueError('G1幅面には引き継いだ前半平面の法線が必要です。')
+        front = v.unit(front_normal)
+    else:
+        front = v.unit(v.cross(v.sub(points[1],points[0]), v.sub(points[2],points[1])))
     back = v.unit(v.cross(v.sub(points[4],points[3]), v.sub(points[5],points[4])))
     # Define H once on the front plane, then transport that side through twist.
     projection = v.dot(front, v.unit(a_side_direction))
@@ -41,8 +46,8 @@ def rectangles(points, a_side_direction, width=10.0, joint_index=2):
 
 
 
-def connected_faces(points, a_side_direction, width=10.0, joint_index=2):
-    faces = rectangles(points, a_side_direction, width, joint_index)
+def connected_faces(points, a_side_direction, width=10.0, joint_index=2, front_normal=None):
+    faces = rectangles(points, a_side_direction, width, joint_index, front_normal)
     front, back = faces[joint_index-1], faces[joint_index]
     shared = {}
     for side in ('H', 'F'):
@@ -65,11 +70,10 @@ def connected_faces(points, a_side_direction, width=10.0, joint_index=2):
 
 
 
-# Removed by the user: all L0/L1 faces, A/B L4, and B L3. Keep full geometry
-# calculation above so shared G2 midpoint coordinates do not change.
+# A L1 is restored on G1-prime; retain original G2 midpoint calculations.
 EXCLUDED_SEGMENTS = {
-    'A': frozenset((0, 1, 4)),
-    'B': frozenset((0, 1, 3, 4)),
+    'A': frozenset((0, 4)),
+    'B': frozenset((0, 1, 4)),
     'C': frozenset((0, 1)),
     'D': frozenset((0, 1)),
 }
@@ -77,18 +81,45 @@ EXCLUDED_SEGMENTS = {
 
 def output_faces(finger, data, a_side_direction, width=10.0):
     faces = connected_faces(data['points_mm'], a_side_direction, width,
-                            data.get('twist_joint_index', 2))
+                            data.get('twist_joint_index', 2), data.get('front_plane_normal'))
     if finger == 'A':
+        # Restore the visible G1-prime segment without changing G2 or H/F identity.
+        g,g1,g2=data['points_mm'][:3]
+        guideline=data.get('guideline_points_mm')
+        g1_prime=guideline[1] if guideline is not None else v.sub(v.add(g,g2),g1)
+        displacement=v.sub(g1_prime,g1)
+        for i,label in enumerate(faces[1]['names']):
+            if label in ('H1','F1'):
+                faces[1]['corners'][i]=v.add(faces[1]['corners'][i],displacement)
+        faces[1]['area_mm2']=None
+        faces[1]['guideline_g1_prime']=True
+    if finger in ('A', 'B'):
+        fraction = 0.25 if finger == 'A' else 0.2
         face = faces[3]
         a, b, c, d = face['corners']
         # Keep the G3 edge (a,d), shared with L2; trim only the G4 end.
-        face['corners'] = [a, v.add(a, v.mul(v.sub(b,a),0.25)),
-                           v.add(d, v.mul(v.sub(c,d),0.25)), d]
-        face['area_mm2'] *= 0.25
-        face['length_fraction'] = 0.25
+        face['corners'] = [a, v.add(a, v.mul(v.sub(b,a),fraction)),
+                           v.add(d, v.mul(v.sub(c,d),fraction)), d]
+        face['area_mm2'] *= fraction
+        face['length_fraction'] = fraction
         for i in (1,2):
             face['names'][i] += "'"
     return [face for face in faces if face['index'] not in EXCLUDED_SEGMENTS[finger]]
+
+
+# Suspend surface generation; retain computed points for dependent reference curves.
+SUSPENDED_WIDTH_FACES = frozenset({('A', 1)})
+SUSPENDED_CONNECTION_FACES = frozenset({'Con2', 'Con4'})
+
+
+def tip_surface(finger,data,direction):
+    from . import grip_reference_fx6
+    face=next(f for f in output_faces(finger,data,direction) if f['index']==4)
+    points=dict(zip(face['names'],face['corners']))
+    points["H5'"]=grip_reference_fx6.tip_point(finger,data,direction)
+    names=["H5'",'F5','F4','H4']
+    return dict(face,names=names,corners=[points[n] for n in names],area_mm2=None,
+                fx6_trimmed=True)
 
 
 def create(root, finger, data, a_side_direction, width=10.0):
@@ -97,11 +128,18 @@ def create(root, finger, data, a_side_direction, width=10.0):
     from . import helpers
     bodies=[]
     for item in output_faces(finger, data, a_side_direction, width):
+        if (finger, item['index']) in SUSPENDED_WIDTH_FACES:
+            continue
+        if finger in ('C','D') and item['index']==4:
+            item=tip_surface(finger,data,a_side_direction)
         name='グリップ幅面：{}L{}：幅{:g}mm'.format(finger,item['index'],width)
         if item.get('midpoint_boundary'):
             name += '：G{}中点接続'.format(data.get('twist_joint_index',2))
         if item.get('length_fraction') == 0.25:
             name += '：G3側1／4'
+        elif item.get('length_fraction') == 0.2:
+            name += '：G3側1／5'
+        if item.get('fx6_trimmed'):name += '：H5′–F5–F4–H4'
         bodies.append(create_patch(root, name, item['corners'],
                                    [finger+label for label in item['names']], item['area_mm2']))
     return bodies
@@ -149,41 +187,72 @@ def create_patch(root, name, corners, names, expected_area=None):
     return body
 
 
+def quarter_l1_points(finger, data, direction):
+    """Keep the G2-side quarter of the current displayed L1 ribbon."""
+    face=connected_faces(data['points_mm'],direction,10.0,
+                         data.get('twist_joint_index',2),data.get('front_plane_normal'))[1]
+    points=dict(zip(face['names'],face['corners']))
+    if finger in ('A','B'):
+        g,g1,g2=data['points_mm'][:3]
+        guideline=data.get('guideline_points_mm')
+        displayed_g1=guideline[1] if guideline is not None else v.sub(v.add(g,g2),g1)
+        shift=v.sub(displayed_g1,g1)
+        for side in 'HF':points[side+'1']=v.add(points[side+'1'],shift)
+    return {finger+side+"1'":v.add(points[side+'2'],v.mul(v.sub(points[side+'1'],points[side+'2']),.25))
+            for side in 'HF'}
+
+
 def connection_faces(finger_data, a_side_direction):
     points = {}
     for finger in ('A', 'B', 'C', 'D'):
         data = finger_data[finger]
         if finger in ('A', 'B'):
             points[finger+"G1'"] = data['guideline_points_mm'][1]
+        else:
+            points[finger+'G1'] = data['points_mm'][1]
         for face in output_faces(finger, data, a_side_direction):
             for label, xyz in zip(face['names'], face['corners']):
                 key = finger+label
                 if key in points and v.norm(v.sub(points[key],xyz)) > 1e-8:
                     raise ValueError('共有する境界点の座標が一致しません：'+key)
                 points[key] = xyz
-    definitions = [("AG1'", 'AF2', 'AH2'), ("BG1'", 'BF2', 'BH2'),
+    for finger in 'ABC':
+        points.update(quarter_l1_points(finger,finger_data[finger],a_side_direction))
+    from . import grip_reference_fx6
+    for finger in 'CD':
+        points[finger+"H5'"]=grip_reference_fx6.tip_point(finger,finger_data[finger],a_side_direction)
+    from . import grip_reference_bezier
+    points["AG2'"] = grip_reference_bezier.curve_data(finger_data['A'])['control_points_mm'][2]
+    definitions = [("AG2'",'AF2','AH2'), ('BF2','BH2',"BH1'","BF1'"),
                    ('AH2','BH2','BH3','AH3'),
-                   ("AG1'","BG1'",'BH2','AH2'),
-                   ('AH3',"AH4'",'BH3'),
+                   ("BG1'",'AH1','AH2','BH2'),
+                   ('AH3',"AH4'","BH4'",'BH3'),
                    ('CF2','DH2','DH3','CF3'),
                    ('CF3','DH3','DH4','CF4'),
-                   ('CF4','DH4','DH5','CF5'),
-                   ('CH5','CF5','DH5'),
-                   ('CF3','CF2','DH2')]
+                   ('CF4','DH4',"DH5'",'CF5'),
+                   ('CF5',"CH5'","DH5'"),
+                   ('CF3','CF2','DH2'),
+                   ('BF3','BF2','CH2','CH3'),
+                   ('DH2','DF2','DG1'),
+                   ('CF2','CH2',"CH1'","CF1'")]
     result = []
-    for names in definitions:
+    for index, names in enumerate(definitions, 1):
         corners = [points[name] for name in names]
         area = None
         if len(corners) == 3:
             area = v.norm(v.cross(v.sub(corners[1],corners[0]),v.sub(corners[2],corners[0])))/2
             if area < 1e-8: raise ValueError('接続三角形の面積がありません。')
-        result.append(dict(names=names, corners=corners, area_mm2=area))
+        result.append(dict(identifier='Con{}'.format(index), names=names, corners=corners, area_mm2=area))
     return result
 
 
 def create_connections(root, finger_data, a_side_direction):
     bodies = []
     for item in connection_faces(finger_data, a_side_direction):
-        name = 'グリップ接続面：'+'–'.join(item['names'])
-        bodies.append(create_patch(root,name,item['corners'],item['names'],item['area_mm2']))
+        if item['identifier'] in SUSPENDED_CONNECTION_FACES:
+            continue
+        name = 'グリップ接続面：'+item['identifier']+'：'+'–'.join(item['names'])
+        body = create_patch(root,name,item['corners'],item['names'],item['area_mm2'])
+        body.attributes.add('grip_connection_face','id',item['identifier'])
+        bodies.append(body)
     return bodies

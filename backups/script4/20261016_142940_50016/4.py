@@ -1,0 +1,404 @@
+"""独立した立体作成用のFusionスクリプト。"""
+import math
+import traceback
+
+import adsk.core
+import adsk.fusion
+
+
+MODEL_NAME = '楕円型握手'
+MAJOR_DIAMETER_MM = 50.0
+MINOR_DIAMETER_MM = 30.0
+TWIST_DEGREES = 90.0
+LOFT_INTERVALS = 24
+THICKEN_SEGMENTS = 8
+THICKNESS_PER_SIDE_MM = 7.5
+FLAT_FILLET_RADIUS_MM = 3.0
+
+
+def build(design):
+    """XY面（Z=0）に原点中心の50×30 mm楕円を描く。"""
+    root = design.rootComponent
+    sketch = root.sketches.add(root.xYConstructionPlane)
+    sketch.name = '楕円_長径{:g}mm_短径{:g}mm_XY_Z0'.format(MAJOR_DIAMETER_MM, MINOR_DIAMETER_MM)
+    # Fusion内部単位はcm。直径mmを半径cmへ変換する。
+    center = adsk.core.Point3D.create(0, 0, 0)
+    major_end = adsk.core.Point3D.create(MAJOR_DIAMETER_MM / 20.0, 0, 0)
+    minor_end = adsk.core.Point3D.create(0, MINOR_DIAMETER_MM / 20.0, 0)
+    ellipse = sketch.sketchCurves.sketchEllipses.add(center, major_end, minor_end)
+    if ellipse is None:
+        raise RuntimeError('楕円を作成できませんでした。')
+    sketch.isLightBulbOn = True
+    create_flat_half(root)
+    twisted_body = create_twisted_half(root)
+    kept_surfaces = cut_negative_z(root, twisted_body)
+    partition_twisted_surface(root, kept_surfaces)
+    solids = join_twisted_solids(root, thicken_surfaces(root))
+    fillet_flat_half(root, solids)
+    return sketch
+
+
+def rotated_section_endpoints_mm(y, radius):
+    """Y軸の右ねじ方向へ回転する断面両端。＋X方向は−Zへ回る。"""
+    b = MINOR_DIAMETER_MM / 2.0
+    theta = math.radians(TWIST_DEGREES) * y / b
+    x, z = radius * math.cos(theta), -radius * math.sin(theta)
+    return (-x, y, -z), (x, y, z)
+
+
+def section_endpoints_mm(y):
+    """回転後の楕円断面両端。Y=0で0°、Y=15 mmで90°。"""
+    a = MAJOR_DIAMETER_MM / 2.0
+    b = MINOR_DIAMETER_MM / 2.0
+    if not 0.0 <= y <= b:
+        raise ValueError('ねじり断面は0～15 mmの範囲で指定してください。')
+    radius = a * math.sqrt(max(0.0, 1.0 - (y / b) ** 2))
+    return rotated_section_endpoints_mm(y, radius)
+
+
+def surface_body(feature, name):
+    if feature is None or feature.bodies.count != 1:
+        raise RuntimeError(name + 'を1つの面ボディとして作成できませんでした。')
+    body = feature.bodies.item(0)
+    if body.isSolid or not math.isfinite(body.area) or body.area <= 0:
+        raise RuntimeError(name + 'の面形状が不正です。')
+    body.name = name
+    body.isLightBulbOn = True
+    feature.name = name
+    return body
+
+
+def create_flat_half(root):
+    """−Y側は正確な半楕円の平面パッチとする。"""
+    sketch = root.sketches.add(root.xYConstructionPlane)
+    sketch.name = '−Y側_半楕円輪郭'
+    arc = sketch.sketchCurves.sketchEllipticalArcs.addByAngle(
+        adsk.core.Point3D.create(0, 0, 0),
+        adsk.core.Vector3D.create(MAJOR_DIAMETER_MM / 20.0, 0, 0),
+        adsk.core.Vector3D.create(0, MINOR_DIAMETER_MM / 20.0, 0),
+        math.pi, math.pi)
+    if arc is None:
+        raise RuntimeError('−Y側の半楕円を作成できませんでした。')
+    line = sketch.sketchCurves.sketchLines.addByTwoPoints(
+        arc.endSketchPoint, arc.startSketchPoint)
+    boundary = adsk.core.ObjectCollection.create()
+    boundary.add(arc)
+    boundary.add(line)
+    patches = root.features.patchFeatures
+    inp = patches.createInput(boundary, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    body = surface_body(patches.add(inp), '楕円型握手_−Y側平面')
+    sketch.isLightBulbOn = False
+    return body
+
+
+def create_twisted_half(root):
+    """短辺Y軸回りのねじり面を作り、回転楕円体で輪郭を切り出す。"""
+    lofts = root.features.loftFeatures
+    inp = lofts.createInput(adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    inp.isSolid = False
+    inp.isClosed = False
+    b = MINOR_DIAMETER_MM / 2.0
+    sketches, planes = [], []
+    base_plane = root.xZConstructionPlane
+    # XZ基準面の法線が−Yを向く場合も、断面は必ず＋Yへ配置する。
+    normal_y = base_plane.geometry.normal.y
+    if abs(abs(normal_y) - 1.0) > 1e-8:
+        raise RuntimeError('ねじり断面の基準面がY軸に垂直ではありません。')
+    for i in range(LOFT_INTERVALS + 1):
+        y = b * 1.1 * i / LOFT_INTERVALS
+        plane_input = root.constructionPlanes.createInput()
+        plane_input.setByOffset(base_plane, adsk.core.ValueInput.createByReal(y / (10.0 * normal_y)))
+        plane = root.constructionPlanes.add(plane_input)
+        plane.name = 'ねじり断面平面_Y{:.3f}mm'.format(y)
+        planes.append(plane)
+        sketch = root.sketches.add(plane)
+        sketch.name = 'ねじり断面_Y{:.3f}mm_{:.3f}deg'.format(y, TWIST_DEGREES * y / b)
+        sketches.append(sketch)
+        def local(point_mm):
+            point = sketch.modelToSketchSpace(adsk.core.Point3D.create(*(v / 10.0 for v in point_mm)))
+            if abs(point.z) > 1e-6:
+                raise RuntimeError('ねじり断面の座標が指定Y平面上にありません。')
+            return point
+        ends = rotated_section_endpoints_mm(y, MAJOR_DIAMETER_MM / 2.0 * 1.125)
+        line = sketch.sketchCurves.sketchLines.addByTwoPoints(local(ends[0]), local(ends[1]))
+        section = adsk.fusion.Path.create(line, adsk.fusion.ChainedCurveOptions.noChainedCurves)
+        if section is None or inp.loftSections.add(section) is None:
+            raise RuntimeError('ねじりロフト断面を設定できませんでした。Y={:.3f} mm'.format(y))
+    body = surface_body(lofts.add(inp), '楕円型握手_ねじり基準拡張面')
+    for entity in sketches + planes:
+        entity.isLightBulbOn = False
+    return trim_to_elliptical_outline(root, body)
+
+
+def ellipsoid_level(point):
+    """回転前の楕円半幅を満たす回転楕円体。pointはFusionのcm。"""
+    a, b = MAJOR_DIAMETER_MM / 20.0, MINOR_DIAMETER_MM / 20.0
+    return (point.y / b) ** 2 + (point.x ** 2 + point.z ** 2) / a ** 2
+
+
+def trim_to_elliptical_outline(root, surface):
+    """正則なねじり面を y²/b²+(x²+z²)/a²=1 の内側へトリム。"""
+    sketch = root.sketches.add(root.xYConstructionPlane)
+    sketch.name = '楕円型握手_輪郭切り出し工具'
+    arc = sketch.sketchCurves.sketchEllipticalArcs.addByAngle(
+        adsk.core.Point3D.create(0, 0, 0),
+        adsk.core.Vector3D.create(MAJOR_DIAMETER_MM / 20.0, 0, 0),
+        adsk.core.Vector3D.create(0, MINOR_DIAMETER_MM / 20.0, 0),
+        -math.pi / 2.0, math.pi)
+    if arc is None:
+        raise RuntimeError('輪郭切り出し工具の楕円弧を作成できませんでした。')
+    axis = sketch.sketchCurves.sketchLines.addByTwoPoints(arc.endSketchPoint, arc.startSketchPoint)
+    if sketch.profiles.count != 1:
+        raise RuntimeError('輪郭切り出し工具の半楕円プロファイルを確認できません。')
+    revolves = root.features.revolveFeatures
+    inp = revolves.createInput(sketch.profiles.item(0), root.yConstructionAxis,
+                               adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    inp.setAngleExtent(False, adsk.core.ValueInput.createByString('360 deg'))
+    revolve = revolves.add(inp)
+    revolve.name = '楕円型握手_輪郭工具回転楕円体'
+    tools = [b for b in revolve.bodies if b.isSolid]
+    if len(tools) != 1:
+        raise RuntimeError('輪郭切り出し用の回転楕円体を作成できませんでした。')
+    tool = tools[0]
+    splits = root.features.splitBodyFeatures
+    split = splits.add(splits.createInput(surface, tool, False))
+    split.name = '楕円型握手_拡張面を楕円輪郭で分割'
+    keep, outside = [], []
+    for piece in split.bodies:
+        if piece.isSolid:
+            continue
+        # 面内部の点で内外を判定する。外側片の重心は内側に入り得る。
+        levels = [ellipsoid_level(face.pointOnFace) for face in piece.faces]
+        if levels and all(v < 1.0 - 1e-7 for v in levels):
+            keep.append(piece)
+        elif levels and all(v > 1.0 + 1e-7 for v in levels):
+            outside.append(piece)
+        else:
+            raise RuntimeError('楕円輪郭分割後の面の内外を判定できませんでした。')
+    if len(keep) != 1 or not outside:
+        raise RuntimeError('楕円輪郭内のねじり面を一意に取得できませんでした。')
+    for piece in outside:
+        removed = root.features.removeFeatures.add(piece)
+        if removed is None:
+            raise RuntimeError('楕円輪郭外の余剰面を除去できませんでした。')
+        removed.name = '楕円型握手_楕円輪郭外を除去'
+    removed = root.features.removeFeatures.add(tool)
+    if removed is None:
+        raise RuntimeError('輪郭切り出し工具を除去できませんでした。')
+    removed.name = '楕円型握手_輪郭工具を除去'
+    sketch.isLightBulbOn = False
+    body = keep[0]
+    body.name = '楕円型握手_＋Y側ねじり90度'
+    body.isLightBulbOn = True
+    return body
+
+
+def cut_negative_z(root, body):
+    """ねじり面をXY面で分割し、Z<0側の面ボディを除去する。"""
+    tolerance_cm = 1e-5
+    splits = root.features.splitBodyFeatures
+    split_input = splits.createInput(body, root.xYConstructionPlane, True)
+    if split_input is None:
+        raise RuntimeError('Z=0面による分割を設定できませんでした。')
+    split = splits.add(split_input)
+    split.name = '楕円型握手_Z0面で分割'
+    pieces = list(split.bodies)
+    if len(pieces) < 2:
+        raise RuntimeError('ねじり面をZ=0で複数の面に分割できませんでした。')
+    keep, remove = [], []
+    for piece in pieces:
+        box = piece.boundingBox
+        if box.maxPoint.z <= tolerance_cm and box.minPoint.z < -tolerance_cm:
+            remove.append(piece)
+        elif box.minPoint.z >= -tolerance_cm and box.maxPoint.z > tolerance_cm:
+            keep.append(piece)
+        else:
+            raise RuntimeError('分割面のZ方向を判定できませんでした。')
+    if not keep or not remove:
+        raise RuntimeError('Zの正側・負側の両方を確認できませんでした。')
+    for piece in remove:
+        feature = root.features.removeFeatures.add(piece)
+        if feature is None:
+            raise RuntimeError('−Z側の面を除去できませんでした。')
+        feature.name = '楕円型握手_−Z部分を切り取り'
+    for i, piece in enumerate(keep):
+        piece.name = '楕円型握手_＋Y側ねじり90度_Z正側' + ('' if i == 0 else '_{}'.format(i + 1))
+        piece.isLightBulbOn = True
+    for remaining in root.bRepBodies:
+        if remaining.boundingBox.minPoint.z < -tolerance_cm:
+            raise RuntimeError('切り取り後もZ<0の面が残っています。')
+    return keep
+
+
+def partition_twisted_surface(root, surfaces):
+    """ねじり面を短いY区間へ分割し、厚み付けの計算範囲を限定する。"""
+    if len(surfaces) != 1:
+        raise RuntimeError('厚み付け前のねじり面を一意に取得できません。')
+    tail = surfaces[0]
+    original_area = tail.area
+    b = MINOR_DIAMETER_MM / 2.0
+    base_plane = root.xZConstructionPlane
+    normal_y = base_plane.geometry.normal.y
+    slices = []
+    for i in range(1, THICKEN_SEGMENTS):
+        y_mm = b * i / THICKEN_SEGMENTS
+        inp = root.constructionPlanes.createInput()
+        inp.setByOffset(base_plane, adsk.core.ValueInput.createByReal(y_mm / (10.0 * normal_y)))
+        plane = root.constructionPlanes.add(inp)
+        plane.name = '厚み付け分割平面_Y{:.4f}mm'.format(y_mm)
+        splits = root.features.splitBodyFeatures
+        split = splits.add(splits.createInput(tail, plane, True))
+        split.name = 'ねじり面の厚み付け区間分割_{}'.format(i)
+        pieces = [piece for piece in split.bodies if not piece.isSolid]
+        if len(pieces) != 2:
+            raise RuntimeError('Y={:.4f} mmでねじり面を2区間に分割できませんでした。'.format(y_mm))
+        lower, upper = [], []
+        # 各面の内部点で区間を判定し、境界ボックスの余裕や面の質量に依存しない。
+        for piece in pieces:
+            samples_y_mm = [face.pointOnFace.y * 10.0 for face in piece.faces]
+            if not samples_y_mm:
+                raise RuntimeError('分割したねじり面に判定用の面がありません。')
+            center_y_mm = sum(samples_y_mm) / len(samples_y_mm)
+            if center_y_mm < y_mm - 1e-5:
+                lower.append(piece)
+            elif center_y_mm > y_mm + 1e-5:
+                upper.append(piece)
+        if len(lower) != 1 or len(upper) != 1:
+            raise RuntimeError('厚み付け用のねじり面区間を識別できません。')
+        slices.append(lower[0])
+        tail = upper[0]
+        plane.isLightBulbOn = False
+    slices.append(tail)
+    if abs(sum(piece.area for piece in slices) - original_area) > max(1e-7, original_area * 1e-6):
+        raise RuntimeError('ねじり面の区間分割で面積が変わりました。')
+    for i, piece in enumerate(slices):
+        piece.name = '楕円型握手_＋Y側ねじり90度_Z正側_区間{:02d}_Y{:.4f}～{:.4f}mm'.format(
+            i + 1, b * i / THICKEN_SEGMENTS, b * (i + 1) / THICKEN_SEGMENTS)
+    return slices
+
+
+def join_twisted_solids(root, solids):
+    """区間別に厚み付けしたねじり側だけを1つのソリッドへ結合する。"""
+    flat = [body for body in solids if body.name.startswith('楕円型握手_−Y側平面_')]
+    twisted = [body for body in solids if body.name.startswith('楕円型握手_＋Y側ねじり90度_')]
+    if len(flat) != 1 or len(twisted) != THICKEN_SEGMENTS:
+        raise RuntimeError('平面側とねじり面の区間ソリッド数を確認できません。')
+    tools = adsk.core.ObjectCollection.create()
+    for body in twisted[1:]:
+        tools.add(body)
+    combines = root.features.combineFeatures
+    inp = combines.createInput(twisted[0], tools)
+    inp.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+    inp.isKeepToolBodies = False
+    try:
+        feature = combines.add(inp)
+    except RuntimeError as error:
+        raise RuntimeError('厚み付けしたねじり区間の結合に失敗しました。\n' + str(error)) from error
+    if feature is None:
+        raise RuntimeError('厚み付けしたねじり区間を結合できませんでした。')
+    feature.name = '楕円型握手_ねじり側厚み付け区間を結合'
+    # 結合により消費された工具を除き、デザイン内の現存ソリッドを確認する。
+    results = [body for body in root.bRepBodies if body.isSolid
+               and body.name.startswith('楕円型握手_＋Y側ねじり90度_')]
+    if len(results) != 1:
+        raise RuntimeError('結合後のねじり側が1つのソリッドになりませんでした。')
+    result = results[0]
+    if not math.isfinite(result.volume) or result.volume <= 0:
+        raise RuntimeError('結合したねじり側ソリッドの体積を確認できません。')
+    result.name = '楕円型握手_＋Y側ねじり90度_Z正側_厚さ15mm'
+    result.isLightBulbOn = True
+    return flat + [result]
+
+
+def thicken_surfaces(root):
+    """切り取り後の各面を法線の両側へ7.5 mmずつ厚み付けする。"""
+    sources = [body for body in root.bRepBodies if not body.isSolid]
+    if len(sources) < 2:
+        raise RuntimeError('厚み付け対象の平面とねじり面がそろっていません。')
+    thickens = root.features.thickenFeatures
+    solids = []
+    for source in sources:
+        name = source.name
+        surfaces = adsk.core.ObjectCollection.create()
+        surfaces.add(source)
+        # 対称厚み付けのthicknessは片側の距離。0.75 cm × 両側 = 15 mm。
+        thickness = adsk.core.ValueInput.createByReal(THICKNESS_PER_SIDE_MM / 10.0)
+        inp = thickens.createInput(surfaces, thickness, True,
+                                  adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+        if inp is None:
+            raise RuntimeError(name + 'の対称厚み付けを設定できませんでした。')
+        try:
+            feature = thickens.add(inp)
+        except RuntimeError as error:
+            raise RuntimeError(name + 'の両側7.5 mm厚み付けに失敗しました。\n' + str(error)) from error
+        if feature is None or feature.bodies.count == 0:
+            raise RuntimeError(name + 'の厚み付けに失敗しました。')
+        feature.name = name + '_両側7.5mm厚み付け'
+        # bodiesには元のサーフェスも含まれるため、生成ソリッドのみを検証する。
+        generated_solids = [body for body in feature.bodies if body.isSolid]
+        if not generated_solids:
+            raise RuntimeError(name + 'の厚み付け結果にソリッドがありません。')
+        for i, body in enumerate(generated_solids):
+            if not math.isfinite(body.volume) or body.volume <= 0:
+                raise RuntimeError(name + 'を有効なソリッドにできませんでした。')
+            body.name = name + '_厚さ15mm' + ('' if i == 0 else '_{}'.format(i + 1))
+            body.isLightBulbOn = True
+            solids.append(body)
+        if source.isValid:
+            source.isLightBulbOn = False
+    return solids
+
+
+def fillet_flat_half(root, solids):
+    """ねじりのない−Y側ソリッドの全周の角へR3 mmを適用する。"""
+    candidates = [body for body in solids
+                  if body.isSolid and body.name.startswith('楕円型握手_−Y側平面_厚さ15mm')]
+    if len(candidates) != 1:
+        raise RuntimeError('R3フィレット対象の半楕円ソリッドを一意に取得できません。')
+    body = candidates[0]
+    # 厚み付け結果の候補リストと専用名で対象を限定する。
+    # 境界ボックスは加工対象を識別するための厳密な寸法判定に使わない。
+    before_volume = body.volume
+    name = body.name
+    edges = adsk.core.ObjectCollection.create()
+    for edge in body.edges:
+        edges.add(edge)
+    if edges.count == 0:
+        raise RuntimeError('半楕円のフィレット対象エッジがありません。')
+    fillets = root.features.filletFeatures
+    inp = fillets.createInput()
+    inp.addConstantRadiusEdgeSet(
+        edges, adsk.core.ValueInput.createByReal(FLAT_FILLET_RADIUS_MM / 10.0), False)
+    try:
+        feature = fillets.add(inp)
+    except RuntimeError as error:
+        raise RuntimeError('半楕円ソリッドの全周R3 mmフィレットに失敗しました。\n' + str(error)) from error
+    if feature is None:
+        raise RuntimeError('半楕円のR3フィレットを作成できませんでした。')
+    feature.name = '楕円型握手_−Y側半楕円_全周R3mm'
+    results = [b for b in feature.bodies if b.isSolid]
+    if len(results) != 1:
+        raise RuntimeError('半楕円のR3フィレット結果を一意に取得できません。')
+    result = results[0]
+    if not math.isfinite(result.volume) or not 0 < result.volume < before_volume:
+        raise RuntimeError('半楕円のR3フィレット後の体積を確認できません。')
+    result.name = name + '_R3mm'
+    result.isLightBulbOn = True
+    return result
+
+
+def run(context):
+    app = adsk.core.Application.get()
+    ui = app.userInterface
+    try:
+        # 実行前に開いていたデザインを変更せず、毎回専用デザインを作る。
+        document = app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
+        design = adsk.fusion.Design.cast(document.products.itemByProductType('DesignProductType'))
+        if design is None:
+            raise RuntimeError('新しいFusionデザインを取得できませんでした。')
+        document.name = MODEL_NAME
+        build(design)
+        app.activeViewport.fit()
+        ui.messageBox('楕円型握手：長径50 mm・短径30 mm・厚み15 mmの立体を作成しました。\n−Y側はXY平面、＋Y側は短辺Y軸回りに原点0°から先端90°へ徐々にねじります。\nZ=0面で分割し、−Z部分を切り取り後、各面の両側へ7.5 mmずつ厚み付けしました（合計15 mm）。\nねじりのない半楕円ソリッドの全周にR3 mmフィレットを追加しました。')
+    except Exception:
+        ui.messageBox(traceback.format_exc())
